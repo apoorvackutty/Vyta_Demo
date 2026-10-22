@@ -1,0 +1,446 @@
+// Member app (phone). Uses a small in-app router so it can sit next to the staff view.
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import { clsx } from 'clsx';
+import { Home as HomeIcon, ClipboardCheck, FileText, Sparkles, Menu, ChevronLeft, ChevronRight, Check, Bell, X, Lock, Droplet, CalendarDays } from 'lucide-react';
+import { useDemo, ops } from '../../state/store';
+import { Button, Chip, ProgressBar, inputCls } from '../../components/ui';
+import { FORMS, STAFF, BLOOD_DRAW_PREP } from '../../data/seed';
+import { INTAKE } from '../../data/intake';
+import { TESTELLE_INTAKE } from '../../data/seed';
+import { GRID_OPTIONS } from '../../lib/intakeFormat';
+import { fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
+import type { IntakeQuestion, IntakeValue } from '../../types';
+
+const MEMBER_ID = 'm-testelle';
+
+// A tiny in-app router: React Router can't nest a second router inside the staff one.
+const NavCtx = createContext<{ path: string; go: (p: string) => void }>({ path: '/home', go: () => {} });
+function useNavigate() { return useContext(NavCtx).go; }
+
+function screenFor(path: string): ReactNode {
+  const [, a, b] = path.split('/');
+  switch (a) {
+    case 'goals': return <Goals />;
+    case 'forms': return b ? <FormView aid={b} /> : <Forms />;
+    case 'intake': return b ? <IntakeSectionView key={b} sid={b} /> : <Intake />;
+    case 'blood-draw': return <BloodDraw />;
+    case 'status': return <Status />;
+    case 'plan': return <Locked title="My plan" body="Your plan appears here after Your Vyta Day, once your nurse practitioner has gone through it with you and approved it." />;
+    case 'report': return <Locked title="Report" body="Your Vyta Health Assessment appears here on Your Vyta Day, after your nurse practitioner reviews it with you." />;
+    case 'sage': return <Sage />;
+    case 'more': return <More />;
+    default: return <Home />;
+  }
+}
+
+export default function MemberApp() {
+  const scenario = useDemo((s) => s.scenario);
+  return <MemberAppInner key={scenario} />;
+}
+function MemberAppInner() {
+  const [path, setPath] = useState('/home');
+  const go = (p: string) => { setPath(p); requestAnimationFrame(() => document.getElementById('member-scroll')?.scrollTo({ top: 0 })); };
+  return (
+    <NavCtx.Provider value={{ path, go }}>
+      <div className="flex h-full flex-col">
+        <div id="member-scroll" className="min-h-0 flex-1 overflow-y-auto">{screenFor(path)}</div>
+        <TabBar />
+      </div>
+    </NavCtx.Provider>
+  );
+}
+
+function TabBar() {
+  const { path, go } = useContext(NavCtx);
+  const tabs: [string, string, ReactNode][] = [['/home', 'Home', <HomeIcon size={20} />], ['/plan', 'My plan', <ClipboardCheck size={20} />], ['/report', 'Report', <FileText size={20} />], ['/sage', 'SAGE', <Sparkles size={20} />], ['/more', 'More', <Menu size={20} />]];
+  return (
+    <nav aria-label="Member app" className="flex border-t border-line bg-paper pb-2">
+      {tabs.map(([to, label, icon]) => {
+        const active = to === '/home' ? path === '/home' : path.startsWith(to);
+        return (
+          <button key={to} onClick={() => go(to)} aria-current={active ? 'page' : undefined} className={clsx('flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px]', active ? 'font-semibold text-plum-700' : 'text-muted')}>
+            {icon}{label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function Top({ title, back }: { title: string; back?: string }) {
+  const nav = useNavigate();
+  return (
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b border-line bg-cream-200/95 px-3 backdrop-blur">
+      {back && <button aria-label="Back" onClick={() => nav(back)} className="flex h-11 w-11 items-center justify-center rounded-full text-plum-700"><ChevronLeft size={22} /></button>}
+      <h1 className={clsx('font-display text-2xl font-semibold text-plum-700', !back && 'pl-2')}>{title}</h1>
+    </header>
+  );
+}
+
+function useMember() {
+  const s = useDemo();
+  const m = s.members.find((x) => x.id === MEMBER_ID)!;
+  const forms = s.assignments.filter((a) => a.memberId === MEMBER_ID);
+  const consents = forms.filter((a) => a.formId !== 'f-intake');
+  const intake = forms.find((a) => a.formId === 'f-intake');
+  const draw = s.visits.find((v) => v.memberId === MEMBER_ID && v.type === 'blood_draw');
+  const notices = s.notices.filter((n) => n.memberId === MEMBER_ID);
+  return { s, m, forms, consents, intake, draw, notices };
+}
+
+function Row({ to, icon, title, sub, done, right }: { to: string; icon: ReactNode; title: string; sub: string; done?: boolean; right?: ReactNode }) {
+  const nav = useNavigate();
+  return (
+    <li>
+      <button onClick={() => nav(to)} className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3 text-left">
+        <span className={clsx('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', done ? 'bg-plum-700 text-paper' : 'bg-plum-100 text-plum-700')}>{done ? <Check size={18} /> : icon}</span>
+        <span className="min-w-0 flex-1"><span className={clsx('block text-[15px] font-semibold', done ? 'text-muted line-through decoration-1' : 'text-plum-900')}>{title}</span><span className="block text-[13px] text-muted">{sub}</span></span>
+        {right ?? <ChevronRight size={18} className="text-muted" />}
+      </button>
+    </li>
+  );
+}
+
+function Home() {
+  const { s, m, consents, intake, draw, notices } = useMember();
+  const nav = useNavigate();
+  const latest = [...notices].reverse().find((n) => !n.read);
+  if (m.phase === 'join') {
+    return (
+      <div className="flex min-h-full flex-col items-center justify-center gap-4 px-8 text-center">
+        <img src="/assets/cover-figure.png" alt="" className="h-56 w-auto rounded-mcard" />
+        <h1 className="font-display text-3xl font-semibold text-plum-700">Welcome to Vyta, {m.name.split(' ')[0]}</h1>
+        <p className="text-[15px] text-plum-900">Maya, your Guide, is setting up your first steps. You'll get a notification here as soon as they're ready.</p>
+      </div>
+    );
+  }
+  const signed = consents.filter((c) => c.status === 'signed').length;
+  const steps = [signed === consents.length && consents.length > 0, intake?.status === 'signed', draw?.status === 'done', false];
+  const doneCount = steps.filter(Boolean).length;
+  const guide = STAFF.find((x) => x.id === m.guideId)!;
+  return (
+    <div className="pb-6">
+      <div className="relative overflow-hidden bg-plum-700 px-5 pb-6 pt-8 text-paper">
+        <img src="/assets/cover-figure.png" alt="" className="absolute -right-10 -top-4 h-48 opacity-30 mix-blend-multiply" />
+        <p className="text-[13px] opacity-80">Discover · Intake & labs</p>
+        <h1 className="font-display text-[34px] font-semibold leading-tight">Hi {m.name.split(' ')[0]}</h1>
+        <p className="mt-1 max-w-[260px] text-[15px] opacity-90">Here's what's next. Everything is saved as you go.</p>
+      </div>
+
+      {latest && (
+        <div className="mx-4 -mt-3 flex items-start gap-3 rounded-mcard border border-line bg-paper p-4 shadow-card">
+          <Bell size={18} className="mt-0.5 shrink-0 text-terracotta-700" />
+          <p className="flex-1 text-[14px] text-plum-900">{latest.text}<span className="block text-[12px] text-muted">{fmtDate(latest.at)} · {fmtTime(latest.at)}</span></p>
+          <button aria-label="Dismiss" onClick={() => s.markNoticesRead(MEMBER_ID)} className="flex h-8 w-8 items-center justify-center text-muted"><X size={16} /></button>
+        </div>
+      )}
+
+      <section className="mx-4 mt-4 rounded-mcard border border-line bg-paper shadow-card" aria-label="Your first steps">
+        <div className="px-4 pt-4">
+          <div className="flex items-baseline justify-between"><h2 className="text-[17px] font-semibold text-plum-900">Your first steps</h2><span className="text-[13px] text-muted">{doneCount} of 4 done</span></div>
+          <ProgressBar value={doneCount / 4} label="First steps" className="mt-2" />
+        </div>
+        <ul className="divide-y divide-line">
+          <Row to="/forms" icon={<FileText size={18} />} title="Sign your consents" sub={`${signed} of ${consents.length} signed`} done={steps[0]} />
+          <Row to="/intake" icon={<ClipboardCheck size={18} />} title="Complete your intake" sub={intake?.status === 'signed' ? 'Done, thank you' : `${Math.round((intake?.progress ?? 0) * 100)}% · about 25 minutes in total`} done={steps[1]} />
+          <Row to="/blood-draw" icon={<Droplet size={18} />} title="Blood draw" sub={draw ? (draw.status === 'done' ? `Done ${fmtDate(draw.at)}` : `${fmtDateTime(draw.at)} · fast 12 h`) : 'Being booked'} done={steps[2]} />
+          <Row to="/status" icon={<CalendarDays size={18} />} title="Your Vyta Day" sub={draw?.labsReceivedAt ? `${fmtDate(m.vytaDayAt!)} · tests, results and your plan` : "We'll book it once your labs are back"} />
+        </ul>
+      </section>
+
+      <button onClick={() => nav('/goals')} className="mx-4 mt-4 block w-[calc(100%-2rem)] rounded-mcard border border-line bg-paper p-4 text-left shadow-card">
+        <span className="text-[13px] text-muted">What you're working towards</span>
+        <span className="mt-1 block font-display text-xl leading-snug text-plum-700">“{m.goals[0]}”</span>
+        <span className="mt-1 block text-[13px] text-terracotta-700">See all your goals and milestones</span>
+      </button>
+
+      <section className="mx-4 mt-4 rounded-mcard border border-line bg-paper p-4 shadow-card" aria-label="Your care team">
+        <h2 className="mb-3 text-[15px] font-semibold text-plum-900">Your care team</h2>
+        <ul className="space-y-2 text-[14px] text-plum-900">
+          {[m.guideId, m.npId, m.coachId].map((id) => { const p = STAFF.find((x) => x.id === id)!; return <li key={id} className="flex justify-between"><span>{p.name}</span><span className="text-muted">{p.title}</span></li>; })}
+        </ul>
+        <p className="mt-3 text-[13px] text-muted">Questions? {guide.name.split(' ')[0]} usually replies within a day.</p>
+      </section>
+    </div>
+  );
+}
+
+function Goals() {
+  const { m } = useMember();
+  return (
+    <div className="pb-6">
+      <Top title="Your goals" back="/home" />
+      <div className="space-y-4 p-4">
+        <section className="rounded-mcard bg-paper p-4 shadow-card">
+          <ul className="space-y-3">{m.goals.map((g) => <li key={g} className="font-display text-xl leading-snug text-plum-700">“{g}”</li>)}</ul>
+        </section>
+        <section className="rounded-mcard bg-paper p-4 shadow-card">
+          <h2 className="mb-1 text-[15px] font-semibold text-plum-900">Milestones this year</h2>
+          <p className="mb-3 text-[13px] text-muted">You'll rate these again at each 3-month review.</p>
+          <ul className="space-y-3">
+            {m.milestones.filter((x) => x.selected).map((x) => (
+              <li key={x.id}>
+                <div className="flex justify-between text-[14px]"><span className="text-plum-900">{x.label}</span><span className="tabular-nums text-muted">{x.score ?? '–'} → {x.target}</span></div>
+                <ProgressBar value={(x.score ?? 0) / 10} label={x.label} className="mt-1.5" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function Forms() {
+  const { consents } = useMember();
+  const nav = useNavigate();
+  const sorted = [...consents].sort((a, b) => Number(a.status === 'signed') - Number(b.status === 'signed'));
+  return (
+    <div>
+      <Top title="Forms to sign" back="/home" />
+      <ul className="m-4 divide-y divide-line rounded-mcard bg-paper shadow-card">
+        {sorted.map((a) => {
+          const f = FORMS.find((x) => x.id === a.formId)!;
+          return (
+            <li key={a.id}>
+              <button onClick={() => nav(`/forms/${a.id}`)} className="flex min-h-[64px] w-full items-center gap-3 px-4 py-3 text-left">
+                <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-plum-900">{f.title}</span><span className="block text-[13px] text-muted">{f.summary}</span></span>
+                {a.status === 'signed' ? <Chip tone="ok">Signed</Chip> : <Chip tone="watch">To sign</Chip>}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function FormView({ aid }: { aid: string }) {
+  const { s, m, forms } = useMember();
+  const nav = useNavigate();
+  const a = forms.find((x) => x.id === aid);
+  const [name, setName] = useState('');
+  const [read, setRead] = useState(false);
+  if (!a) return null;
+  const f = FORMS.find((x) => x.id === a.formId)!;
+  return (
+    <div className="pb-6">
+      <Top title={f.title} back="/forms" />
+      <article className="space-y-3 p-4 text-[15px] leading-relaxed text-plum-900">
+        <p className="text-[12px] text-muted">Version {f.version}</p>
+        {f.body.map((p, i) => <p key={i}>{p}</p>)}
+      </article>
+      {a.status === 'signed' ? (
+        <div className="mx-4 rounded-mcard bg-ok-bg p-4 text-[14px] text-ok-fg">Signed by {a.signedName} · {fmtDateTime(a.signedAt!)}</div>
+      ) : (
+        <div className="mx-4 space-y-3 rounded-mcard bg-paper p-4 shadow-card">
+          <label className="flex min-h-[44px] items-center gap-3 text-[14px] text-plum-900"><input type="checkbox" className="h-5 w-5 accent-plum-700" checked={read} onChange={(e) => setRead(e.target.checked)} />I've read and understood this form</label>
+          <label htmlFor="sig" className="block text-[13px] font-medium text-plum-900">Type your full name to sign</label>
+          <input id="sig" className={clsx(inputCls, 'h-12 text-[16px]')} value={name} onChange={(e) => setName(e.target.value)} placeholder={m.name} autoComplete="name" />
+          <Button size="lg" className="w-full" disabled={!read || name.trim().length < 2} onClick={() => { s.run((d) => ops.signForm(d, a.id, name.trim()), 'Signed · thank you'); nav('/forms'); }}>Sign</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Intake() {
+  const { s, intake } = useMember();
+  const nav = useNavigate();
+  const done = s.intakeDone[MEMBER_ID] ?? [];
+  const ans = s.intake[MEMBER_ID] ?? {};
+  if (!intake) return <Locked title="Intake" body="Your intake form arrives with your first steps." />;
+  const next = INTAKE.find((x) => !done.includes(x.id));
+  return (
+    <div className="pb-6">
+      <Top title="Your intake" back="/home" />
+      <div className="p-4">
+        <div className="rounded-mcard bg-paper p-4 shadow-card">
+          <p className="text-[14px] text-plum-900">{intake.status === 'signed' ? 'All done. Your care team will read this before your visit.' : '7 short sections. Your answers save as you go, so you can stop any time.'}</p>
+          <ProgressBar value={intake.progress ?? 0} label="Intake progress" className="mt-3" />
+          <p className="mt-1.5 text-[13px] text-muted">{done.length} of {INTAKE.length} sections done</p>
+          {next && <Button size="lg" className="mt-4 w-full" onClick={() => nav(`/intake/${next.id}`)}>{done.length || Object.keys(ans).length ? 'Pick up where you left off' : 'Start'}</Button>}
+        </div>
+        <ol className="mt-4 divide-y divide-line rounded-mcard bg-paper shadow-card">
+          {INTAKE.map((sec, i) => {
+            const isDone = done.includes(sec.id);
+            const started = sec.questions.some((q) => ans[q.id] !== undefined);
+            return (
+              <li key={sec.id}>
+                <button onClick={() => nav(`/intake/${sec.id}`)} className="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left">
+                  <span className={clsx('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold', isDone ? 'bg-plum-700 text-paper' : 'bg-plum-100 text-plum-700')}>{isDone ? <Check size={16} /> : i + 1}</span>
+                  <span className="flex-1 text-[15px] text-plum-900">{sec.title}<span className="block text-[12px] text-muted">{sec.questions.length} questions{!isDone && started ? ' · started' : ''}</span></span>
+                  <ChevronRight size={18} className="text-muted" />
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+function IntakeSectionView({ sid }: { sid: string }) {
+  const { s } = useMember();
+  const nav = useNavigate();
+  const idx = INTAKE.findIndex((x) => x.id === sid);
+  const sec = INTAKE[idx];
+  const [ans, setAns] = useState<Record<string, IntakeValue>>(() => Object.fromEntries((sec?.questions ?? []).map((q) => [q.id, (s.intake[MEMBER_ID] ?? {})[q.id]]).filter(([, v]) => v !== undefined)));
+    if (!sec) return null;
+  const set = (id: string, v: IntakeValue) => setAns((a) => ({ ...a, [id]: v }));
+  const save = (complete: boolean) => s.run((d) => ops.saveIntake(d, MEMBER_ID, sec.id, ans, complete), complete ? `Section ${idx + 1} saved` : 'Saved. Come back any time');
+  const nextSec = INTAKE[idx + 1];
+  return (
+    <div className="pb-6" data-intake-top>
+      <Top title={`${idx + 1} of ${INTAKE.length}`} back="/intake" />
+      <div className="px-4 pt-4">
+        <h2 className="font-display text-[26px] font-semibold leading-tight text-plum-700">{sec.title}</h2>
+        <button className="mt-1 text-[12px] text-muted underline" onClick={() => setAns(Object.fromEntries(sec.questions.map((q) => [q.id, TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined)))}>Demo: fill sample answers</button>
+      </div>
+      <div className="space-y-4 p-4">
+        {sec.questions.map((q) => <QuestionInput key={q.id} q={q} value={ans[q.id]} onChange={(v) => set(q.id, v)} />)}
+      </div>
+      <div className="sticky bottom-0 flex gap-2 border-t border-line bg-cream-200/95 p-4 backdrop-blur">
+        <Button variant="secondary" size="lg" className="flex-1" onClick={() => { save(false); nav('/home'); }}>Save & exit</Button>
+        <Button size="lg" className="flex-1" onClick={() => { save(true); nav(nextSec ? `/intake/${nextSec.id}` : '/intake'); }}>{nextSec ? 'Next section' : 'Finish intake'}</Button>
+      </div>
+    </div>
+  );
+}
+
+function Pill({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" aria-pressed={selected} onClick={onClick} className={clsx('min-h-[44px] rounded-full border px-4 py-2 text-left text-[14px]', selected ? 'border-plum-700 bg-plum-700 text-paper' : 'border-line bg-paper text-plum-900')}>
+      {children}
+    </button>
+  );
+}
+
+function QuestionInput({ q, value, onChange }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void }) {
+  const label = <p className="mb-2 text-[15px] font-medium text-plum-900">{q.text}</p>;
+  const box = (c: ReactNode) => <fieldset className="rounded-mcard bg-paper p-4 shadow-card"><legend className="sr-only">{q.text}</legend>{label}{c}</fieldset>;
+  if (q.type === 'single') return box(<div className="flex flex-wrap gap-2">{q.options!.map((o) => <Pill key={String(o)} selected={value === o} onClick={() => onChange(String(o))}>{o}</Pill>)}</div>);
+  if (q.type === 'multi') {
+    const arr = Array.isArray(value) ? value : [];
+    return box(<div className="flex flex-wrap gap-2">{q.options!.map((o) => { const v = String(o); const on = arr.includes(v); return <Pill key={v} selected={on} onClick={() => onChange(on ? arr.filter((x) => x !== v) : [...arr, v])}>{v}</Pill>; })}</div>);
+  }
+  if (q.type === 'scale') {
+    const [lo, hi] = q.options as number[];
+    const nums = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
+    return box(<div className="flex flex-wrap gap-1.5">{nums.map((n) => (
+      <button key={n} type="button" aria-pressed={value === n} onClick={() => onChange(n)} className={clsx('h-11 w-[2.6rem] rounded-lg border text-[14px] tabular-nums', value === n ? 'border-plum-700 bg-plum-700 text-paper' : 'border-line bg-paper text-plum-900')}>{n}</button>
+    ))}</div>);
+  }
+  if (q.type === 'grid') {
+    const obj = (value && typeof value === 'object' && !Array.isArray(value)) ? value as Record<string, string> : {};
+    return box(<div className="space-y-3">{(q.options as string[]).map((row) => (
+      <div key={row}><p className="mb-1.5 text-[13px] text-muted">{row}</p><div className="flex flex-wrap gap-1.5">{GRID_OPTIONS.map((o) => <Pill key={o} selected={obj[row] === o} onClick={() => onChange({ ...obj, [row]: o })}>{o}</Pill>)}</div></div>
+    ))}</div>);
+  }
+  if (q.type === 'date') return box(<input type="date" aria-label={q.text} className={clsx(inputCls, 'h-12 text-[16px]')} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} />);
+  return box(<textarea aria-label={q.text} rows={2} className={clsx(inputCls, 'text-[16px]')} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} />);
+}
+
+function BloodDraw() {
+  const { draw } = useMember();
+  return (
+    <div className="pb-6">
+      <Top title="Blood draw" back="/home" />
+      {!draw ? <Locked title="" body="Your Guide is booking this." bare /> : (
+        <div className="space-y-4 p-4">
+          <section className="rounded-mcard bg-paper p-4 shadow-card">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-display text-[26px] font-semibold leading-tight text-plum-700">{fmtDate(draw.at)}</p>
+                <p className="text-[15px] text-plum-900">{fmtTime(draw.at)} · {draw.location}</p>
+              </div>
+              {draw.status === 'done' ? <Chip tone="ok">Done</Chip> : draw.status === 'confirmed' ? <Chip tone="ok">Confirmed</Chip> : <Chip tone="info">Booked</Chip>}
+            </div>
+            {draw.status === 'done' && <p className="mt-3 text-[14px] text-plum-900">{draw.labsReceivedAt ? 'Your results are in. Your care team is preparing your report.' : "Thanks. Your sample is at the lab. Results usually take 3–5 days, and we'll let you know."}</p>}
+            {draw.status !== 'done' && (
+              <div className="mt-4 flex gap-2">
+                <Button variant="secondary" className="flex-1" disabled title="Connects later">Add to calendar</Button>
+                <Button variant="ghost" className="flex-1" disabled title="Messages arrive in the next build">Change time</Button>
+              </div>
+            )}
+          </section>
+          {draw.status !== 'done' && (
+            <section className="rounded-mcard bg-paper p-4 shadow-card">
+              <h2 className="mb-3 text-[15px] font-semibold text-plum-900">How to prepare</h2>
+              <ul className="space-y-3 text-[14px] text-plum-900">{BLOOD_DRAW_PREP.map((p) => <li key={p} className="flex gap-3"><Check size={16} className="mt-0.5 shrink-0 text-terracotta-700" />{p}</li>)}</ul>
+              <p className="mt-3 text-[12px] text-muted">We'll remind you 3 days before and the day before.</p>
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Status() {
+  const { m, consents, intake, draw } = useMember();
+  const steps = [
+    { label: 'Consents signed', done: consents.length > 0 && consents.every((c) => c.status === 'signed') },
+    { label: 'Intake complete', done: intake?.status === 'signed' },
+    { label: 'Blood drawn', done: draw?.status === 'done' },
+    { label: 'Lab results in', done: !!draw?.labsReceivedAt },
+    { label: 'Report being prepared by your care team', done: false },
+    { label: `Your Vyta Day${m.vytaDayAt && draw?.labsReceivedAt ? ` · ${fmtDate(m.vytaDayAt)}` : ''}`, done: false },
+  ];
+  const lastDone = steps.map((x) => x.done).lastIndexOf(true);
+  const current = steps.findIndex((x, i) => !x.done && i > lastDone);
+  return (
+    <div className="pb-6">
+      <Top title="Where things are" back="/home" />
+      <ol className="m-4 rounded-mcard bg-paper p-5 shadow-card">
+        {steps.map((st, i) => (
+          <li key={st.label} className="relative flex gap-3 pb-5 last:pb-0">
+            {i < steps.length - 1 && <span className={clsx('absolute left-[11px] top-6 h-full w-0.5', st.done ? 'bg-plum-700' : 'bg-line')} aria-hidden="true" />}
+            <span className={clsx('relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2', st.done ? 'border-plum-700 bg-plum-700 text-paper' : i === current || i < lastDone ? 'border-terracotta-500 bg-paper' : 'border-line bg-paper')}>{st.done && <Check size={13} />}</span>
+            <span className={clsx('text-[15px]', st.done ? 'text-muted' : i === current ? 'font-semibold text-plum-900' : 'text-plum-900')}>{st.label}{i === current && <span className="block text-[12px] font-normal text-terracotta-700">Up next</span>}{!st.done && i < lastDone && <span className="block text-[12px] font-normal text-terracotta-700">Still to do</span>}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function Locked({ title, body, bare }: { title: string; body: string; bare?: boolean }) {
+  return (
+    <div className="pb-6">
+      {!bare && <Top title={title} />}
+      <div className="flex flex-col items-center gap-3 px-8 py-12 text-center">
+        <img src="/assets/botanical-clover.png" alt="" className="h-28 w-28 object-contain mix-blend-multiply" />
+        <Lock size={18} className="text-muted" />
+        <p className="text-[15px] text-plum-900">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+function Sage() {
+  return (
+    <div className="pb-6">
+      <Top title="SAGE" />
+      <div className="m-4 rounded-mcard border border-line bg-paper p-4 text-[14px] text-plum-900 shadow-card">
+        <p><span className="mr-2 rounded bg-plum-100 px-1.5 py-0.5 text-[11px] font-semibold text-plum-700">AI</span>I'm SAGE, an AI. I can explain your report once it's ready. I can't give medical advice.</p>
+        <p className="mt-2 font-semibold text-danger-fg">Not for emergencies: call 911.</p>
+      </div>
+      <p className="px-6 text-center text-[13px] text-muted">Your report arrives on Your Vyta Day. Then you can ask me anything about it.</p>
+    </div>
+  );
+}
+
+function More() {
+  const nav = useNavigate();
+  const items: [string, string][] = [['Your goals and milestones', '/goals'], ['Forms', '/forms'], ['Intake', '/intake'], ['Blood draw', '/blood-draw'], ['Where things are', '/status']];
+  return (
+    <div>
+      <Top title="More" />
+      <ul className="m-4 divide-y divide-line rounded-mcard bg-paper shadow-card">
+        {items.map(([l, to]) => <li key={to}><button onClick={() => nav(to)} className="flex min-h-[56px] w-full items-center justify-between px-4 text-left text-[15px] text-plum-900">{l}<ChevronRight size={18} className="text-muted" /></button></li>)}
+      </ul>
+    </div>
+  );
+}

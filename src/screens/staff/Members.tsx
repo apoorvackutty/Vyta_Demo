@@ -1,0 +1,82 @@
+// S2 Members: list or board by program.
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { clsx } from 'clsx';
+import { useDemo } from '../../state/store';
+import { useStaffRole } from '../../components/shell';
+import { Avatar, Chip } from '../../components/ui';
+import { PROGRAM_LABEL, MENO_LABEL, phaseLabel } from '../../components/domain';
+import { STAFF } from '../../data/seed';
+import { ageYears, fmtDate } from '../../lib/time';
+import type { Program } from '../../types';
+
+export default function Members() {
+  const role = useStaffRole();
+  const { members, now, flags } = useDemo();
+  const nav = useNavigate();
+  const [view, setView] = useState<'list' | 'board'>('list');
+  const open = (id: string) => nav(`/staff/${role}/member/${id}`);
+  const name = (id: string) => STAFF.find((s) => s.id === id)?.name.split(' ')[0];
+  const hasFlag = (id: string) => flags.some((f) => f.memberId === id && f.status !== 'closed');
+
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-6">
+      <div className="mb-5 flex items-end justify-between">
+        <h1 className="font-display text-[32px] font-semibold text-plum-700">Members</h1>
+        <div role="group" aria-label="View" className="flex rounded-lg border border-line bg-paper p-1">
+          {(['list', 'board'] as const).map((v) => (
+            <button key={v} aria-pressed={view === v} onClick={() => setView(v)} className={clsx('rounded-md px-3 py-1.5 text-sm capitalize', view === v ? 'bg-plum-700 text-paper' : 'text-muted')}>{v}</button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'list' ? (
+        <div className="overflow-x-auto rounded-card border border-line bg-paper shadow-card">
+          <table className="w-full text-sm">
+            <thead className="border-b border-line text-left text-[13px] text-muted">
+              <tr><th className="px-4 py-2.5 font-medium">Member</th><th className="font-medium">Program</th><th className="font-medium">Phase</th><th className="font-medium">Where she is</th><th className="font-medium">Guide</th><th className="font-medium">Last contact</th></tr>
+            </thead>
+            <tbody>
+              {members.map((m) => (
+                <tr key={m.id} onClick={() => open(m.id)} className="cursor-pointer border-b border-line last:border-0 hover:bg-cream-100">
+                  <td className="px-4 py-3">
+                    <button onClick={() => open(m.id)} className="flex items-center gap-3 text-left">
+                      <Avatar name={m.name} />
+                      <span><span className="block font-semibold text-plum-900">{m.name}</span><span className="text-xs text-muted">{ageYears(m.dob, now)} · {MENO_LABEL[m.menoStatus]}</span></span>
+                    </button>
+                  </td>
+                  <td><Chip tone="plum">{PROGRAM_LABEL[m.program]}</Chip></td>
+                  <td className="text-plum-900">{phaseLabel(m.phase)}</td>
+                  <td className="text-plum-900">{hasFlag(m.id) && <Chip tone="danger" className="mr-2">Safety</Chip>}{m.step}</td>
+                  <td className="text-muted">{name(m.guideId)}</td>
+                  <td className="pr-4 text-muted">{m.lastContactAt ? fmtDate(m.lastContactAt) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-4">
+          {(Object.keys(PROGRAM_LABEL) as Program[]).map((p) => {
+            const list = members.filter((m) => m.program === p);
+            return (
+              <section key={p} aria-label={PROGRAM_LABEL[p]} className="rounded-card bg-cream-200/60 p-3">
+                <h2 className="mb-3 flex items-center justify-between text-sm font-semibold text-plum-900">{PROGRAM_LABEL[p]}<span className="text-muted">{list.length}</span></h2>
+                <ul className="flex flex-col gap-2">
+                  {list.map((m) => (
+                    <li key={m.id}>
+                      <button onClick={() => open(m.id)} className="w-full rounded-lg border border-line bg-paper p-3 text-left hover:border-plum-700">
+                        <span className="block text-sm font-semibold text-plum-900">{m.name}</span>
+                        <span className="block text-xs text-muted">{phaseLabel(m.phase)} · {m.step}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
