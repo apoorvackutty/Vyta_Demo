@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
+import { X } from 'lucide-react';
 import { ops } from './state/store';
 import { DemoBar, StaffShell, PhoneFrame, Toasts, useStaffRole } from './components/shell';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -36,7 +37,7 @@ function StaffRoutes() {
 }
 
 function Stage() {
-  const { role, split, staffSignedIn } = useDemo();
+  const { role, split, staffSignedIn, setSplit } = useDemo();
   if (role === 'member') {
     return (
       <div id="main-content" tabIndex={-1} className="flex min-h-[calc(100vh-44px)] items-start justify-center bg-cream-100 py-8 focus:outline-none">
@@ -49,8 +50,12 @@ function Stage() {
     return (
       <div className="flex">
         <div className="min-w-0 flex-1"><StaffRoutes /></div>
-        <aside aria-label="Member's phone" className="sticky top-[44px] hidden h-[calc(100vh-44px)] shrink-0 overflow-y-auto border-l border-line bg-cream-100 px-6 py-6 xl:block">
-          <p className="mb-3 text-center text-xs font-medium text-muted">Testelle's phone, live</p>
+        {/* Wide screens: a column beside the staff view. Narrower: slides in over the right side so it always shows. */}
+        <aside aria-label="Member's phone" className="fixed bottom-0 right-0 z-30 max-h-[calc(100vh-96px)] shrink-0 overflow-y-auto border-l border-line bg-cream-100 px-6 pb-6 pt-3 shadow-card xl:sticky xl:top-[44px] xl:z-auto xl:h-[calc(100vh-44px)] xl:max-h-none xl:shadow-none">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-muted">Testelle's phone, live</p>
+            <button onClick={() => setSplit(false)} className="flex min-h-[32px] items-center gap-1 rounded-md px-2 text-xs font-medium text-plum-700 hover:bg-plum-100"><X size={14} aria-hidden="true" /> Hide phone</button>
+          </div>
           <ErrorBoundary><PhoneFrame><MemberApp /></PhoneFrame></ErrorBoundary>
         </aside>
       </div>
