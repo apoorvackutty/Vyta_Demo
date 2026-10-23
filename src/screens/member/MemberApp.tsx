@@ -236,7 +236,17 @@ function FormView({ aid }: { aid: string }) {
         <div className="mx-4 space-y-3 rounded-mcard bg-paper p-4 shadow-card">
           <label className="flex min-h-[44px] items-center gap-3 text-[14px] text-plum-900"><input type="checkbox" className="h-5 w-5 accent-plum-700" checked={read} onChange={(e) => setRead(e.target.checked)} />I've read and understood this form</label>
           <label htmlFor="sig" className="block text-[13px] font-medium text-plum-900">Type your full name to sign</label>
-          <input id="sig" className={clsx(inputCls, 'h-12 text-[16px]')} value={name} onChange={(e) => setName(e.target.value)} placeholder={m.name} autoComplete="name" />
+          {/* Demo: Tab or → on the empty field fills her name, like accepting a suggestion */}
+          <input id="sig" className={clsx(inputCls, 'h-12 text-[16px]')} value={name} onChange={(e) => setName(e.target.value)} placeholder={m.name} autoComplete="name"
+            aria-describedby="sig-hint"
+            onKeyDown={(e) => { if (!name && ((e.key === 'Tab' && !e.shiftKey) || e.key === 'ArrowRight')) { e.preventDefault(); setName(m.name); } }} />
+          {!name && (
+            <p id="sig-hint" className="flex min-h-[44px] items-center gap-1 text-[13px] text-muted">
+              Press Tab or
+              <button type="button" className="font-medium text-terracotta-700 underline underline-offset-2" onClick={() => setName(m.name)}>tap here</button>
+              to fill in {m.name}
+            </p>
+          )}
           <Button size="lg" className="w-full" disabled={!read || name.trim().length < 2} onClick={() => { s.run((d) => ops.signForm(d, a.id, name.trim()), 'Signed · thank you'); nav('/forms'); }}>Sign</Button>
         </div>
       )}
