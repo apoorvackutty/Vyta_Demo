@@ -5,7 +5,7 @@ import { clsx } from 'clsx';
 import { useDemo } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
 import { Avatar, Button, Chip, EmptyState } from '../../components/ui';
-import { PROGRAM_LABEL, MENO_LABEL, PHASES, phaseLabel } from '../../components/domain';
+import { PROGRAM_LABEL, MENO_LABEL, PHASES, PROGRAM_ORDER, ProgramLadder, phaseIndex, phaseLabel } from '../../components/domain';
 import { STAFF } from '../../data/seed';
 import { ageYears, fmtDate } from '../../lib/time';
 import type { MenoStatus, Phase, Program } from '../../types';
@@ -19,13 +19,14 @@ export default function Members() {
   const name = (id: string) => STAFF.find((s) => s.id === id)?.name.split(' ')[0];
   const hasFlag = (id: string) => flags.some((f) => f.memberId === id && f.status !== 'closed');
   // Filters (SCREENS S2): phase, owner, peri/post, flags.
+  const [program, setProgram] = useState<Program | ''>('');
   const [phase, setPhase] = useState<Phase | ''>('');
   const [owner, setOwner] = useState('');
   const [meno, setMeno] = useState<MenoStatus | ''>('');
   const [flagged, setFlagged] = useState(false);
-  const filtering = !!(phase || owner || meno || flagged);
-  const clear = () => { setPhase(''); setOwner(''); setMeno(''); setFlagged(false); };
-  const shown = members.filter((m) => (!phase || m.phase === phase) && (!owner || [m.guideId, m.npId, m.coachId, m.maId].includes(owner))
+  const filtering = !!(program || phase || owner || meno || flagged);
+  const clear = () => { setProgram(''); setPhase(''); setOwner(''); setMeno(''); setFlagged(false); };
+  const shown = members.filter((m) => (!program || m.program === program) && (!phase || m.phase === phase) && (!owner || [m.guideId, m.npId, m.coachId, m.maId].includes(owner))
     && (!meno || m.menoStatus === meno) && (!flagged || hasFlag(m.id)));
   const sel = 'h-9 rounded-lg border border-line bg-paper px-2 text-sm text-plum-900 focus:border-plum-700 focus:outline-none focus:ring-2 focus:ring-terracotta-500/40';
 
@@ -41,6 +42,10 @@ export default function Members() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Filters">
+        <label className="sr-only" htmlFor="f-program">Programme</label>
+        <select id="f-program" className={sel} value={program} onChange={(e) => setProgram(e.target.value as Program | '')}>
+          <option value="">All programmes</option>{PROGRAM_ORDER.map((p) => <option key={p} value={p}>{PROGRAM_LABEL[p]}</option>)}
+        </select>
         <label className="sr-only" htmlFor="f-phase">Phase</label>
         <select id="f-phase" className={sel} value={phase} onChange={(e) => setPhase(e.target.value as Phase | '')}>
           <option value="">All phases</option>{PHASES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -68,7 +73,7 @@ export default function Members() {
         <div className="overflow-x-auto rounded-card border border-line bg-paper shadow-card">
           <table className="w-full text-sm">
             <thead className="border-b border-line text-left text-[13px] text-muted">
-              <tr><th className="px-4 py-2.5 font-medium">Member</th><th className="font-medium">Program</th><th className="font-medium">Phase</th><th className="font-medium">Where she is</th><th className="font-medium">Guide</th><th className="font-medium">Last contact</th></tr>
+              <tr><th className="px-4 py-2.5 font-medium">Member</th><th className="font-medium">Journey</th><th className="font-medium">Where she is</th><th className="font-medium">Guide</th><th className="font-medium">Last contact</th></tr>
             </thead>
             <tbody>
               {shown.map((m) => (
@@ -79,8 +84,10 @@ export default function Members() {
                       <span><span className="block font-semibold text-plum-900">{m.name}</span><span className="text-xs text-muted">{ageYears(m.dob, now)} · {MENO_LABEL[m.menoStatus]}</span></span>
                     </button>
                   </td>
-                  <td><Chip tone="plum">{PROGRAM_LABEL[m.program]}</Chip></td>
-                  <td className="text-plum-900">{phaseLabel(m.phase)}</td>
+                  <td className="py-3">
+                    <span className="flex items-center gap-2"><Chip tone="plum">{PROGRAM_LABEL[m.program]}</Chip><ProgramLadder program={m.program} compact /></span>
+                    <span className="mt-1 block text-xs text-muted">{phaseLabel(m.phase)} · step {phaseIndex(m.phase) + 1} of {PHASES.length}</span>
+                  </td>
                   <td className="text-plum-900">{hasFlag(m.id) && <Chip tone="danger" className="mr-2">Safety</Chip>}{m.step}</td>
                   <td className="text-muted">{name(m.guideId)}</td>
                   <td className="pr-4 text-muted">{m.lastContactAt ? fmtDate(m.lastContactAt) : '—'}</td>
@@ -91,18 +98,21 @@ export default function Members() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-4">
-          {(Object.keys(PROGRAM_LABEL) as Program[]).map((p) => {
+          {PROGRAM_ORDER.map((p) => {
             const list = shown.filter((m) => m.program === p);
             return (
               <section key={p} aria-label={PROGRAM_LABEL[p]} className="rounded-card bg-cream-200/60 p-3">
-                <h2 className="mb-3 flex items-center justify-between text-sm font-semibold text-plum-900">{PROGRAM_LABEL[p]}<span className="text-muted">{list.length}</span></h2>
+                <h2 className="mb-3 flex items-center justify-between text-sm font-semibold text-plum-900"><span>{PROGRAM_ORDER.indexOf(p) + 1} · {PROGRAM_LABEL[p]}</span><span className="text-muted">{list.length}</span></h2>
                 <ul className="flex flex-col gap-2">
                   {list.length === 0 && <li className="px-1 text-xs text-muted">No members here right now.</li>}
                   {list.map((m) => (
                     <li key={m.id}>
                       <button onClick={() => open(m.id)} className="w-full rounded-lg border border-line bg-paper p-3 text-left hover:border-plum-700">
                         <span className="block text-sm font-semibold text-plum-900">{m.name}</span>
-                        <span className="block text-xs text-muted">{phaseLabel(m.phase)} · {m.step}</span>
+                        <span className="mt-1 flex items-center gap-1" role="img" aria-label={`${phaseLabel(m.phase)}, step ${phaseIndex(m.phase) + 1} of ${PHASES.length}`}>
+                          {PHASES.map((p, i) => <span key={p.id} className={clsx('h-1.5 flex-1 rounded-full', i < phaseIndex(m.phase) ? 'bg-plum-700' : i === phaseIndex(m.phase) ? 'bg-terracotta-500' : 'bg-line')} />)}
+                        </span>
+                        <span className="mt-1 block text-xs text-muted">{phaseLabel(m.phase)} · {m.step}</span>
                       </button>
                     </li>
                   ))}

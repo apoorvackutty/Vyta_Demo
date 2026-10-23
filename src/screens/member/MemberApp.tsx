@@ -7,6 +7,7 @@ import { Avatar, Button, Chip, ProgressBar, inputCls } from '../../components/ui
 import { MemberSignIn } from '../SignIn';
 import { useAnnouncePage } from '../../components/shell';
 import { FORMS, STAFF, BLOOD_DRAW_PREP } from '../../data/seed';
+import { PHASES, PROGRAM_LABEL, PROGRAM_ORDER, ProgramLadder, journeyLabel, phaseIndex, programIndex } from '../../components/domain';
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
 import { GRID_OPTIONS } from '../../lib/intakeFormat';
@@ -23,6 +24,7 @@ function screenFor(path: string): ReactNode {
   const [, a, b] = path.split('/');
   switch (a) {
     case 'goals': return <Goals />;
+    case 'journey': return <Journey />;
     case 'forms': return b ? <FormView aid={b} /> : <Forms />;
     case 'intake': return b ? <IntakeSectionView key={b} sid={b} /> : <Intake />;
     case 'blood-draw': return <BloodDraw />;
@@ -136,7 +138,7 @@ function Home() {
     <div className="pb-6">
       <div className="relative overflow-hidden bg-plum-700 px-5 pb-6 pt-8 text-paper">
         <img src="/assets/cover-figure.png" alt="" className="absolute -right-10 -top-4 h-48 opacity-30 mix-blend-multiply" />
-        <p className="text-[13px] opacity-80">Discover · Intake & labs</p>
+        <p className="text-[13px] opacity-80">{journeyLabel(m.program, m.phase)}</p>
         <h1 className="font-display text-[34px] font-semibold leading-tight">Hi {m.name.split(' ')[0]}</h1>
         <p className="mt-1 max-w-[260px] text-[15px] opacity-90">Here's what's next. Everything is saved as you go.</p>
       </div>
@@ -162,6 +164,13 @@ function Home() {
         </ul>
       </section>
 
+      <button onClick={() => nav('/journey')} className="mx-4 mt-4 block w-[calc(100%-2rem)] rounded-mcard border border-line bg-paper p-4 text-left shadow-card" aria-label={`Your journey: ${PROGRAM_LABEL[m.program]}, step ${phaseIndex(m.phase) + 1} of ${PHASES.length}. See your journey`}>
+        <span className="flex items-baseline justify-between"><span className="text-[15px] font-semibold text-plum-900">Your journey</span><span className="text-[13px] text-muted">Step {phaseIndex(m.phase) + 1} of {PHASES.length}</span></span>
+        <span className="mt-2 block"><ProgramLadder program={m.program} inline /></span>
+        <span className="mt-2 block text-[14px] text-plum-900">You're in <strong>{PROGRAM_LABEL[m.program]}</strong>, at {PHASES[phaseIndex(m.phase)].label}.</span>
+        <span className="mt-1 block text-[13px] text-terracotta-700">See your whole journey</span>
+      </button>
+
       <button onClick={() => nav('/goals')} className="mx-4 mt-4 block w-[calc(100%-2rem)] rounded-mcard border border-line bg-paper p-4 text-left shadow-card">
         <span className="text-[13px] text-muted">What you're working towards</span>
         <span className="mt-1 block font-display text-xl leading-snug text-plum-700">“{m.goals[0]}”</span>
@@ -175,6 +184,57 @@ function Home() {
         </ul>
         <p className="mt-3 text-[13px] text-muted">Questions? {guide.name.split(' ')[0]} usually replies within a day.</p>
       </section>
+    </div>
+  );
+}
+
+// Where she is: the programmes in order, and the steps inside the one she's in now.
+function Journey() {
+  const { m } = useMember();
+  const pIdx = programIndex(m.program);
+  const sIdx = phaseIndex(m.phase);
+  return (
+    <div className="pb-6">
+      <Top title="Your journey" back="/home" />
+      <div className="space-y-4 p-4">
+        <p className="text-[15px] text-plum-900">You're in <strong>{PROGRAM_LABEL[m.program]}</strong>, programme {pIdx + 1} of 4. Here's where you are, and what comes after.</p>
+        <ol className="rounded-mcard bg-paper p-4 shadow-card" aria-label="Your programmes">
+          {PROGRAM_ORDER.map((p, i) => {
+            const done = i < pIdx; const current = i === pIdx;
+            return (
+              <li key={p} aria-current={current ? 'step' : undefined} className="relative flex gap-3 pb-5 last:pb-0">
+                {i < PROGRAM_ORDER.length - 1 && <span className={clsx('absolute left-[15px] top-8 h-[calc(100%-2rem)] w-0.5', done ? 'bg-plum-700' : 'bg-line')} aria-hidden="true" />}
+                <span className={clsx('relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-[13px] font-semibold',
+                  done && 'border-plum-700 bg-plum-700 text-paper', current && 'border-terracotta-500 bg-paper text-terracotta-700', !done && !current && 'border-line bg-paper text-muted')}>
+                  {done ? <Check size={16} aria-hidden="true" /> : i + 1}
+                </span>
+                <div className="min-w-0 flex-1 pt-1">
+                  <p className={clsx('text-[16px]', current ? 'font-semibold text-plum-900' : done ? 'text-muted' : 'text-plum-900')}>{PROGRAM_LABEL[p]}</p>
+                  <p className={clsx('text-[13px]', current ? 'text-terracotta-700' : 'text-muted')}>{done ? 'Done' : current ? "You're here" : i === pIdx + 1 ? 'Comes next' : 'Later'}</p>
+                  {current && (
+                    <ol className="mt-3 space-y-2.5" aria-label={`Steps in ${PROGRAM_LABEL[p]}`}>
+                      {PHASES.map((ph, j) => (
+                        <li key={ph.id} className="flex items-start gap-2.5" aria-current={j === sIdx ? 'step' : undefined}>
+                          <span className={clsx('mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                            j < sIdx && 'border-plum-700 bg-plum-700 text-paper', j === sIdx && 'border-terracotta-500 bg-paper', j > sIdx && 'border-line bg-paper')}>
+                            {j < sIdx && <Check size={11} aria-hidden="true" />}
+                          </span>
+                          <span className="text-[14px] text-plum-900">
+                            <span className={j === sIdx ? 'font-semibold' : j < sIdx ? 'text-muted' : ''}>{ph.label}</span>
+                            {j < sIdx && <span className="sr-only"> (done)</span>}
+                            {j === sIdx && <span className="block text-[13px] text-terracotta-700">Now: {m.step}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+        <p className="text-[13px] text-muted">Your care team decides with you when you're ready to move on to the next programme.</p>
+      </div>
     </div>
   );
 }
@@ -522,7 +582,7 @@ function Sage() {
 function More() {
   const nav = useNavigate();
   const { signOut, toast } = useDemo();
-  const items: [string, string][] = [['Your goals and milestones', '/goals'], ['Forms', '/forms'], ['Intake', '/intake'], ['Blood draw', '/blood-draw'], ['Where things are', '/status']];
+  const items: [string, string][] = [['Your journey', '/journey'], ['Your goals and milestones', '/goals'], ['Forms', '/forms'], ['Intake', '/intake'], ['Blood draw', '/blood-draw'], ['Where things are', '/status']];
   return (
     <div>
       <Top title="More" />

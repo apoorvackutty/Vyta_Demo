@@ -4,7 +4,7 @@ import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ClipboardCheck, Droplet, FileSignature, FileText, Send } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
-import { PhaseTracker, MilestoneBar, BandChip, PROGRAM_LABEL, MENO_LABEL } from '../../components/domain';
+import { JourneyTracker, MilestoneBar, BandChip, PROGRAM_LABEL, MENO_LABEL } from '../../components/domain';
 import { Avatar, Button, Card, Chip, EmptyState, ProgressBar, SectionTitle, Tabs } from '../../components/ui';
 import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
@@ -54,7 +54,9 @@ export default function MemberRecord() {
       : report.status === 'draft' ? `Draft v${report.version} · waiting on NP pre-review`
         : report.status === 'pre_reviewed' ? `Draft v${report.version} pre-reviewed · waiting on Coach wording review` : `Report v${report.version}`;
 
-  const waiting = m.phase === 'join' ? { what: 'Onboarding', owner: 'Maya (Guide)' }
+  // Roster members aren't playable in the demo; their seeded step says what they're waiting on.
+  const waiting = !m.isLead ? { what: m.step, owner: `${staffName(m.guideId).split(' ')[0]} (Guide)` }
+    : m.phase === 'join' ? { what: 'Onboarding', owner: 'Maya (Guide)' }
     : intake && intake.status !== 'signed' ? { what: `Her intake (${Math.round((intake.progress ?? 0) * 100)}%)`, owner: `${m.name.split(' ')[0]} · Maya follows up` }
       : draw && !draw.labsReceivedAt ? { what: draw.status === 'done' ? 'Lab results' : 'Blood draw', owner: 'Jordan (MA)' }
         : report?.status === 'pre_reviewed' ? { what: 'Coach wording review', owner: 'Sienna (Coach)' }
@@ -80,7 +82,7 @@ export default function MemberRecord() {
             <span className="block text-xs text-muted">Owner: {waiting.owner}</span>
           </div>
         </div>
-        <div className="mt-5"><PhaseTracker phase={m.phase} step={m.step} /></div>
+        <div className="mt-5"><JourneyTracker program={m.program} phase={m.phase} step={m.step} /></div>
         {m.milestones.some((x) => x.selected) && m.phase !== 'join' && <div className="mt-5 max-w-md"><MilestoneBar milestones={m.milestones} /></div>}
       </Card>
 

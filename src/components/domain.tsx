@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import { Check } from 'lucide-react';
-import type { Phase, Milestone, QueueItem, Band } from '../types';
+import type { Phase, Milestone, QueueItem, Band, Program } from '../types';
 import { Button, Avatar, Chip, type Tone } from './ui';
 import { CATEGORY_LABEL } from '../state/queues';
 
@@ -14,6 +14,13 @@ export const PHASES: { id: Phase; label: string }[] = [
 ];
 export const phaseLabel = (p: Phase) => PHASES.find((x) => x.id === p)?.label ?? p;
 export const PROGRAM_LABEL = { discover: 'Discover', heal: 'Heal', optimize: 'Optimize', thrive: 'Thrive' } as const;
+// The member's journey runs through the programmes in this order; each programme runs through PHASES.
+export const PROGRAM_ORDER: Program[] = ['discover', 'heal', 'optimize', 'thrive'];
+export const programIndex = (p: Program) => PROGRAM_ORDER.indexOf(p);
+export const phaseIndex = (p: Phase) => PHASES.findIndex((x) => x.id === p);
+export function journeyLabel(program: Program, phase: Phase) {
+  return `${PROGRAM_LABEL[program]} · ${phaseLabel(phase)}`;
+}
 export const MENO_LABEL = { peri: 'Perimenopause', post: 'Postmenopause', not_applicable: 'Not applicable' } as const;
 
 export function PhaseTracker({ phase, step }: { phase: Phase; step: string }) {
@@ -105,4 +112,52 @@ const BAND: Record<Band, { tone: Tone; label: string }> = {
 };
 export function BandChip({ band }: { band: Band }) {
   return <Chip tone={BAND[band].tone}>{BAND[band].label}</Chip>;
+}
+
+// Programme ladder: Discover → Heal → Optimize → Thrive. Done / current / next are told apart by icon and words, not colour alone.
+// `inline` renders plain spans (aria-hidden) for use inside a button that names the journey itself.
+export function ProgramLadder({ program, compact, inline }: { program: Program; compact?: boolean; inline?: boolean }) {
+  const idx = programIndex(program);
+  if (compact) {
+    return (
+      <span className="inline-flex items-center gap-1" role="img" aria-label={`Programme ${idx + 1} of 4: ${PROGRAM_LABEL[program]}`}>
+        {PROGRAM_ORDER.map((p, i) => (
+          <span key={p} className={clsx('h-1.5 w-5 rounded-full', i < idx ? 'bg-plum-700' : i === idx ? 'bg-terracotta-500' : 'bg-line')} />
+        ))}
+      </span>
+    );
+  }
+  const List = inline ? 'span' : 'ol';
+  const Item = inline ? 'span' : 'li';
+  return (
+    <List className="flex w-full items-center gap-1" aria-label={inline ? undefined : 'Programme journey'} aria-hidden={inline || undefined}>
+      {PROGRAM_ORDER.map((p, i) => {
+        const done = i < idx; const current = i === idx;
+        return (
+          <Item key={p} aria-current={current && !inline ? 'step' : undefined}
+            className={clsx('flex flex-1 items-center justify-center gap-1.5 rounded-full border px-2 py-1.5 text-xs',
+              done && 'border-plum-700 bg-plum-700 text-paper', current && 'border-terracotta-500 bg-paper font-semibold text-plum-900 ring-2 ring-terracotta-500/30',
+              !done && !current && 'border-line bg-paper text-muted')}>
+            {done && <Check size={12} aria-hidden="true" />}
+            {PROGRAM_LABEL[p]}
+            {!inline && <span className="sr-only">{done ? ' (done)' : current ? ' (current programme)' : ' (later)'}</span>}
+          </Item>
+        );
+      })}
+    </List>
+  );
+}
+
+// Both levels together: which programme she's in, then where she is inside it.
+export function JourneyTracker({ program, phase, step }: { program: Program; phase: Phase; step: string }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3 text-xs">
+        <span className="font-medium text-plum-900">Journey</span>
+        <span className="text-muted">Programme {programIndex(program) + 1} of 4 · step {phaseIndex(phase) + 1} of {PHASES.length} in {PROGRAM_LABEL[program]}</span>
+      </div>
+      <ProgramLadder program={program} />
+      <PhaseTracker phase={phase} step={step} />
+    </div>
+  );
 }
