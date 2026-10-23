@@ -1,6 +1,6 @@
 # Build Plan and Demo Script
 
-**Status (23 Oct):** Steps 0–1 and tasks 10–16 are done (through intake and blood draw, with labs received). Continue from task 17 (N2 Pre-review). Scenarios 3–7 are stubbed in `src/state/scenarios.ts`.
+**Status (23 Oct):** Steps 0–1 and tasks 10–17 are done (through N2 Pre-review; scenario 3 is playable). Continue from task 18 (C1 Wording review). Scenarios 4–7 are stubbed in `src/state/scenarios.ts`.
 
 Rule from Tab's two discarded builds: **one screen or one feature per prompt, in order.** Don't ask Claude Code to "build the app". Finish a step, click through it, commit, then move on.
 

@@ -22,7 +22,7 @@ interface DemoStore extends DemoData {
   markNoticesRead: (memberId: string) => void;
 }
 
-const DATA_KEYS: (keyof DemoData)[] = ['now', 'members', 'assignments', 'visits', 'flags', 'followUps', 'timeline', 'notices', 'intake', 'intakeDone', 'seq'];
+const DATA_KEYS: (keyof DemoData)[] = ['now', 'members', 'assignments', 'visits', 'flags', 'followUps', 'timeline', 'notices', 'intake', 'intakeDone', 'results', 'reports', 'approvals', 'seq'];
 const pickData = (s: DemoData): DemoData => {
   const out = {} as Record<string, unknown>;
   for (const k of DATA_KEYS) out[k] = s[k];
@@ -57,7 +57,7 @@ export const useDemo = create<DemoStore>()(
       markNoticesRead: (memberId) => get().run((d) => { d.notices.forEach((n) => { if (n.memberId === memberId) n.read = true; }); }),
     }),
     {
-      name: 'vyta-demo-v1',
+      name: 'vyta-demo-v2',
       partialize: (s) => {
         const { toasts, ...rest } = s;
         return rest;

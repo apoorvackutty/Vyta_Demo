@@ -2,6 +2,7 @@
 import type { QueueItem, StaffRole, QueueCategory } from '../types';
 import type { DemoData } from './ops';
 import { STATIC_TASKS } from '../data/seed';
+import { canApprovePreReview } from './guards';
 import { ageLabel, daysBetween, fmtDateTime, fmtDate, toMs } from '../lib/time';
 
 function snoozed(d: DemoData, taskKey: string) {
@@ -77,11 +78,35 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
         label: 'Labs awaited', reason: `Drawn ${fmtDate(v.at)} · chase the lab if not back by day 3`, ageLabel: ageLabel(v.at, d.now), priority: 2,
         primary: { label: 'Labs received', action: { type: 'labs_received', visitId: v.id } },
       });
-      if (v.labsReceivedAt) items.push({
-        key: `draft-${v.id}`, memberId: m.id, category: 'reviews', roles: ['np'],
-        label: 'Labs received · draft next', reason: 'The draft HEAL plan and pre-review arrive in the next build', ageLabel: ageLabel(v.labsReceivedAt, d.now), priority: 2,
-        primary: { label: 'Open', action: { type: 'open_record', memberId: m.id } },
+    }
+
+    for (const r of d.reports.filter((x) => x.memberId === m.id)) {
+      if (r.status === 'building') items.push({
+        key: `report-${r.id}`, memberId: m.id, category: 'reviews', roles: ['np'],
+        label: r.building?.kind === 'rebuild' ? `Rebuilding draft v${r.version + 1}…` : 'Building draft HEAL plan…',
+        reason: r.building?.kind === 'rebuild' ? `Sent back: ${r.building.reason}` : `Labs received · from the ${r.protocol.toLowerCase()}`,
+        ageLabel: ageLabel(r.building?.startedAt ?? d.now, d.now), priority: 2,
+        primary: { label: 'Open', action: { type: 'pre_review', memberId: m.id } },
       });
+      if (r.status === 'draft') {
+        const check = canApprovePreReview(r, d.results);
+        items.push({
+          key: `report-${r.id}`, memberId: m.id, category: 'reviews', roles: ['np'],
+          label: 'Pre-review: draft ready',
+          reason: `Draft v${r.version} · ${check.findingsTotal - check.findingsDecided} findings to decide · ${check.itemsTotal - check.itemsResolved} plan items need review`,
+          ageLabel: ageLabel(r.builtAt ?? d.now, d.now), priority: 1,
+          primary: { label: 'Pre-review', action: { type: 'pre_review', memberId: m.id } },
+        });
+      }
+      if (r.status === 'pre_reviewed') {
+        const ap = d.approvals.filter((a) => a.reportId === r.id && a.outcome === 'approved').slice(-1)[0];
+        items.push({
+          key: `wording-${r.id}`, memberId: m.id, category: 'reviews', roles: ['coach'],
+          label: 'Wording review', reason: `Draft v${r.version} pre-reviewed by the NP · member-facing text only`,
+          ageLabel: ageLabel(ap?.at ?? d.now, d.now), priority: 1,
+          primary: { label: 'Open', action: { type: 'open_record', memberId: m.id } },
+        });
+      }
     }
   }
 

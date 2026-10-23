@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
+import { ops } from './state/store';
 import { DemoBar, StaffShell, PhoneFrame, Toasts, useStaffRole } from './components/shell';
 import { ErrorBoundary } from './ErrorBoundary';
 import { useDemo } from './state/store';
@@ -7,6 +8,7 @@ import Today from './screens/staff/Today';
 import Members from './screens/staff/Members';
 import MemberRecord from './screens/staff/MemberRecord';
 import Onboard from './screens/staff/Onboard';
+import PreReview from './screens/staff/PreReview';
 import MemberApp from './screens/member/MemberApp';
 
 function StaffRoutes() {
@@ -22,6 +24,7 @@ function StaffRoutes() {
           <Route path="/staff/:role/members" element={<Members />} />
           <Route path="/staff/:role/member/:id" element={<MemberRecord />} />
           <Route path="/staff/:role/onboard/:id" element={<Onboard />} />
+          <Route path="/staff/:role/pre-review/:id" element={<PreReview />} />
           <Route path="*" element={<Navigate to="/staff/guide/today" replace />} />
         </Routes>
       </ErrorBoundary>
@@ -52,10 +55,26 @@ function Stage() {
   return <StaffRoutes />;
 }
 
+// Simulated draft engine (TRD §4): 2.5 s for a new draft, 1.5 s for a rebuild after send back.
+function DraftBuilder() {
+  const { reports, run } = useDemo();
+  const building = reports.filter((r) => r.status === 'building').map((r) => `${r.id}|${r.building?.kind}`).join(',');
+  useEffect(() => {
+    if (!building) return;
+    const timers = building.split(',').map((key) => {
+      const [rid, kind] = key.split('|');
+      return setTimeout(() => run((d) => ops.finishDraft(d, rid), kind === 'rebuild' ? 'Draft rebuilt · back for pre-review' : 'Draft HEAL plan ready for NP pre-review'), kind === 'rebuild' ? 1500 : 2500);
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [building, run]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <DemoBar />
+      <DraftBuilder />
       <Stage />
       <Toasts />
     </BrowserRouter>

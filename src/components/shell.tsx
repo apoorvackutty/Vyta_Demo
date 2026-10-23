@@ -85,8 +85,10 @@ export function PhoneFrame({ children }: { children: ReactNode }) {
 
 export function Toasts() {
   const { toasts, dismissToast, role } = useDemo();
+  const { pathname } = useLocation();
+  const overFooter = /\/pre-review\//.test(pathname); // clear the sticky gate footer
   return (
-    <div aria-live="polite" className={clsx('pointer-events-none fixed bottom-4 z-50 flex flex-col gap-2', role === 'member' ? 'right-4' : 'left-4 md:left-60')}>
+    <div aria-live="polite" className={clsx('pointer-events-none fixed z-50 flex flex-col gap-2', overFooter ? 'bottom-24' : 'bottom-4', role === 'member' ? 'right-4' : 'left-4 md:left-60')}>
       {toasts.slice(-3).map((t) => (
         <button key={t.id} onClick={() => dismissToast(t.id)} className="pointer-events-auto rounded-lg bg-plum-900 px-4 py-3 text-left text-sm text-cream-100 shadow-card">
           {t.text}

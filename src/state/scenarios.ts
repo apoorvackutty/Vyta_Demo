@@ -1,5 +1,5 @@
 import type { DemoData } from './ops';
-import { onboard, signForm, saveIntake, markDrawn, confirmVisit, log } from './ops';
+import { onboard, signForm, saveIntake, markDrawn, confirmVisit, labsReceived, finishDraft, skipIntakeToEnd, log } from './ops';
 import { TESTELLE_BASE, ROSTER, TESTELLE_INTAKE, BLOOD_DRAW_SLOTS } from '../data/seed';
 import { INTAKE } from '../data/intake';
 
@@ -8,7 +8,7 @@ export type ScenarioId = 'day0' | 'intake_stalled' | 'labs_back' | 'vyta_day' | 
 export const SCENARIOS: { id: ScenarioId; label: string; ready: boolean }[] = [
   { id: 'day0', label: '1 · Day 0 – after discovery call', ready: true },
   { id: 'intake_stalled', label: '2 · Intake in progress (stalled)', ready: true },
-  { id: 'labs_back', label: '3 · Labs back – draft for NP', ready: false },
+  { id: 'labs_back', label: '3 · Labs back – draft for NP', ready: true },
   { id: 'vyta_day', label: '4 · Your Vyta Day – morning', ready: false },
   { id: 'released', label: '5 · After release – member home', ready: false },
   { id: 'safety', label: '6 · Safety flag raised', ready: false },
@@ -20,7 +20,7 @@ function day0(): DemoData {
     now: '2026-10-12T10:30',
     members: [structuredClone(TESTELLE_BASE), ...structuredClone(ROSTER)],
     assignments: [], visits: [], flags: [], followUps: [], timeline: [], notices: [],
-    intake: {}, intakeDone: {}, seq: 0,
+    intake: {}, intakeDone: {}, results: [], reports: [], approvals: [], seq: 0,
   };
   log(d, 'm-testelle', 'system', 'lead', 'Consult request from the website', '2026-10-06T19:12');
   log(d, 'm-testelle', 's-guide', 'call', 'Discovery call with Maya: good fit, wants energy and strength back', '2026-10-09T15:00');
@@ -55,7 +55,22 @@ function intakeStalled(): DemoData {
   return d;
 }
 
+// Intake finished, labs back on Mon 19 Oct and the draft built: Dana's pre-review morning.
+function labsBack(): DemoData {
+  const d = intakeStalled();
+  d.now = '2026-10-16T19:30';
+  skipIntakeToEnd(d, 'm-testelle');
+  const v = d.visits.find((x) => x.memberId === 'm-testelle' && x.type === 'blood_draw')!;
+  d.now = '2026-10-19T07:50';
+  labsReceived(d, v.id, 's-ma');
+  d.now = '2026-10-19T07:53';
+  finishDraft(d, 'r-m-testelle-baseline');
+  d.now = '2026-10-19T08:30';
+  return d;
+}
+
 export function buildScenario(id: ScenarioId): DemoData {
   if (id === 'intake_stalled') return intakeStalled();
+  if (id === 'labs_back') return labsBack();
   return day0();
 }

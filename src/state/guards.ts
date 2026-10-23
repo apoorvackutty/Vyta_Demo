@@ -1,0 +1,48 @@
+// Gate guards (docs/SCHEMA.md §4). The UI disables the gate button and lists `missing` in plain words.
+import type { PlanItem, PlanField, Report, Result } from '../types';
+import { FIELD_LABEL, BAND_RANK } from '../data/protocol';
+
+const empty = (v?: string) => !v || !v.trim();
+
+// Fields a † item still needs before the NP can mark it reviewed.
+export function unfilled(item: PlanItem): PlanField[] {
+  return (item.missing ?? []).filter((f) => empty(item[f]));
+}
+
+export const needsReview = (item: PlanItem) => !!item.flag && !item.resolved && !item.removed;
+
+export interface GateCheck {
+  ok: boolean;
+  missing: string[];
+  findingsDecided: number;
+  findingsTotal: number;
+  itemsResolved: number;
+  itemsTotal: number;
+}
+
+export function canApprovePreReview(report: Report, results: Result[]): GateCheck {
+  const marker = (resultId: string) => results.find((r) => r.id === resultId)?.marker ?? resultId;
+  const rank = (resultId: string) => BAND_RANK[results.find((r) => r.id === resultId)?.band ?? 'optimal'];
+  const undecided = report.findings.filter((f) => !f.decision).sort((a, b) => rank(a.resultId) - rank(b.resultId));
+  const open = report.plan.filter(needsReview);
+  const missing: string[] = [];
+  if (undecided.length) {
+    const names = undecided.slice(0, 3).map((f) => marker(f.resultId)).join(', ');
+    missing.push(`${undecided.length} finding${undecided.length > 1 ? 's' : ''} need${undecided.length > 1 ? '' : 's'} a decision (${names}${undecided.length > 3 ? '…' : ''})`);
+  }
+  for (const item of open) {
+    const gaps = unfilled(item);
+    if (gaps.length) missing.push(`${item.name}: ${gaps.map((g) => FIELD_LABEL[g].toLowerCase()).join(' and ')} missing`);
+    else if (item.flag === 'proposed') missing.push(`${item.name}: proposed step needs your review`);
+    else missing.push(`${item.name}: mark as reviewed`);
+  }
+  if (report.status !== 'draft') missing.push('The draft is not waiting on pre-review');
+  return {
+    ok: missing.length === 0,
+    missing,
+    findingsDecided: report.findings.length - undecided.length,
+    findingsTotal: report.findings.length,
+    itemsResolved: report.plan.length - open.length,
+    itemsTotal: report.plan.length,
+  };
+}

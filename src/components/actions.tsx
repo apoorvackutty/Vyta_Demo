@@ -30,7 +30,8 @@ export function useQueueActions(role: StaffRole) {
       case 'log_call': setCallFor({ memberId: a.memberId, taskKey: a.taskKey }); break;
       case 'confirm_visit': run((d) => ops.confirmVisit(d, a.visitId, by), 'Blood draw confirmed'); break;
       case 'mark_drawn': run((d) => ops.markDrawn(d, a.visitId, by), 'Marked as drawn · sent to lab'); break;
-      case 'labs_received': run((d) => ops.labsReceived(d, a.visitId, by), 'Labs received · draft HEAL plan builds next'); break;
+      case 'labs_received': run((d) => ops.labsReceived(d, a.visitId, by), 'Labs received · building the draft HEAL plan'); break;
+      case 'pre_review': nav(`/staff/np/pre-review/${a.memberId}`); break;
     }
   }, [nav, role, run, by]);
 

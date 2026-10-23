@@ -38,11 +38,16 @@ describe('intake and blood draw flow', () => {
     const q = getQueue(d, 'guide');
     expect(q[0].category).toBe('safety');
   });
-  it('labs received moves the item to the NP', () => {
+  it('labs received starts building the draft, then the NP gets a pre-review task', () => {
     const d = buildScenario('intake_stalled');
     const v = d.visits[0];
     ops.labsReceived(d, v.id, 's-ma');
-    expect(getQueue(d, 'np').some((q) => q.key === `draft-${v.id}`)).toBe(true);
+    const r = d.reports[0];
+    expect(r.status).toBe('building');
+    expect(getQueue(d, 'np').find((q) => q.key === `report-${r.id}`)?.label).toMatch(/Building draft/);
+    ops.finishDraft(d, r.id);
+    expect(r.status).toBe('draft');
+    expect(getQueue(d, 'np').find((q) => q.key === `report-${r.id}`)?.label).toBe('Pre-review: draft ready');
   });
 });
 

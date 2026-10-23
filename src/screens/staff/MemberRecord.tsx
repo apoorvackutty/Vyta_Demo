@@ -1,10 +1,10 @@
 // S3 Member record: header, phase tracker, milestones, tabs.
 import { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Droplet, FileSignature, Send } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, Droplet, FileSignature, Send } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
-import { PhaseTracker, MilestoneBar, PROGRAM_LABEL, MENO_LABEL } from '../../components/domain';
+import { PhaseTracker, MilestoneBar, BandChip, PROGRAM_LABEL, MENO_LABEL } from '../../components/domain';
 import { Avatar, Button, Card, Chip, EmptyState, ProgressBar, SectionTitle, Tabs } from '../../components/ui';
 import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
@@ -29,11 +29,19 @@ export default function MemberRecord() {
   const events = s.timeline.filter((e) => e.memberId === m.id).slice().reverse();
   const staffName = (sid: string) => STAFF.find((x) => x.id === sid)?.name ?? (sid === 'member' ? m.name : 'System');
   const unsigned = forms.filter((f) => f.status !== 'signed').length;
+  const report = s.reports.find((r) => r.memberId === m.id && r.kind === 'baseline');
+  const results = s.results.filter((r) => r.memberId === m.id);
+  const reportLine = !report ? null
+    : report.status === 'building' ? 'Draft HEAL plan building'
+      : report.status === 'draft' ? `Draft v${report.version} · waiting on NP pre-review`
+        : report.status === 'pre_reviewed' ? `Draft v${report.version} pre-reviewed · waiting on Coach wording review` : `Report v${report.version}`;
 
   const waiting = m.phase === 'join' ? { what: 'Onboarding', owner: 'Maya (Guide)' }
     : intake && intake.status !== 'signed' ? { what: `Her intake (${Math.round((intake.progress ?? 0) * 100)}%)`, owner: `${m.name.split(' ')[0]} · Maya follows up` }
       : draw && !draw.labsReceivedAt ? { what: draw.status === 'done' ? 'Lab results' : 'Blood draw', owner: 'Jordan (MA)' }
-        : { what: 'Draft HEAL plan', owner: 'Dana (NP)' };
+        : report?.status === 'pre_reviewed' ? { what: 'Coach wording review', owner: 'Sienna (Coach)' }
+          : report?.status === 'building' ? { what: 'Draft HEAL plan (building)', owner: 'System' }
+            : { what: 'NP pre-review', owner: 'Dana (NP)' };
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
@@ -95,6 +103,12 @@ export default function MemberRecord() {
                           {draw.status === 'done' && !draw.labsReceivedAt && <Button size="sm" onClick={() => s.run((d) => ops.labsReceived(d, draw.id, by), 'Labs received')}>Labs received</Button>}
                         </span>
                       )}
+                    </li>
+                  )}
+                  {report && reportLine && (
+                    <li className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="flex items-center gap-2"><ClipboardCheck size={16} className="text-terracotta-700" /> {reportLine}</span>
+                      {(role === 'np' || role === 'admin') && <Button size="sm" variant={report.status === 'draft' ? 'primary' : 'ghost'} onClick={() => nav(`/staff/${role}/pre-review/${m.id}`)}>{report.status === 'draft' ? 'Pre-review' : 'View draft'}</Button>}
                     </li>
                   )}
                 </ul>
@@ -173,8 +187,28 @@ export default function MemberRecord() {
 
         {tab === 'results' && (
           <Card className="p-5">
-            {draw?.labsReceivedAt ? (
-              <EmptyState title="Labs received" body={`Lab results came in ${fmtDate(draw.labsReceivedAt)}. The draft HEAL plan and NP pre-review arrive in the next build.`} />
+            {draw?.labsReceivedAt && results.length ? (
+              <>
+                <SectionTitle action={reportLine && <span className="text-xs text-muted">{reportLine}</span>}>Baseline labs · received {fmtDate(draw.labsReceivedAt)}</SectionTitle>
+                <div className="grid gap-x-8 md:grid-cols-2">
+                  {[...new Set(results.map((r) => r.panel))].map((panel) => (
+                    <div key={panel} className="mb-4">
+                      <h3 className="mb-1 text-[13px] font-medium text-muted">{panel}</h3>
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {results.filter((r) => r.panel === panel).map((r) => (
+                            <tr key={r.id} className="border-t border-line">
+                              <td className="py-1.5 text-plum-900">{r.marker}</td>
+                              <td className="tabular-nums text-plum-900">{r.value}{r.unit ? ` ${r.unit}` : ''}</td>
+                              <td className="text-right"><BandChip band={r.band} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : <EmptyState title="No results yet" body={draw ? `Blood draw ${draw.status === 'done' ? 'done' : 'booked'} for ${fmtDateTime(draw.at)}.` : 'Results appear here after her blood draw and Your Vyta Day.'} />}
           </Card>
         )}

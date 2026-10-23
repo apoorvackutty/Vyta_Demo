@@ -159,4 +159,94 @@ export type QueueAction =
   | { type: 'log_call'; memberId: string; taskKey: string }
   | { type: 'confirm_visit'; visitId: string }
   | { type: 'mark_drawn'; visitId: string }
-  | { type: 'labs_received'; visitId: string };
+  | { type: 'labs_received'; visitId: string }
+  | { type: 'pre_review'; memberId: string };
+
+// ---------- Results, report and plan (SCHEMA §1) ----------
+export type Band =
+  | 'optimal' | 'elite' | 'watch' | 'needs_attention' | 'below_target' | 'not_retested' | 'not_scored';
+export interface Result {
+  id: string;
+  memberId: string;
+  visitId?: string;
+  panel: string;
+  marker: string;
+  value: number | string | null;
+  unit?: string;
+  target?: string;
+  band: Band;
+  source: string; // "Lab report p.3"
+}
+
+export interface Scores {
+  vmri: number;
+  vmriBand: 'optimized' | 'resilient' | 'moderate_burden' | 'high_vulnerability' | 'critical_burden';
+  biologicalAge: number;
+  symptoms: number;
+}
+
+export type ReportStatus =
+  | 'building' | 'draft' | 'pre_reviewed' | 'wording_checked'
+  | 'ready_for_visit' | 'final_review' | 'released' | 'withdrawn';
+export interface Report {
+  id: string;
+  memberId: string;
+  kind: 'baseline' | 'quarterly';
+  version: number;
+  status: ReportStatus;
+  scores: Scores;
+  focusAreas: string[];
+  findings: Finding[];
+  plan: PlanItem[];
+  protocol: string; // template the draft started from
+  builtAt?: string;
+  building?: { kind: 'draft' | 'rebuild'; reason?: string; startedAt: string }; // simulated engine run (TRD §4)
+}
+
+export interface Finding {
+  id: string;
+  resultId: string;
+  summary: string;
+  decision?: 'treat' | 'refer' | 'monitor' | 'dismiss';
+  note?: string;
+  decidedById?: string;
+  decidedAt?: string;
+}
+
+export type PlanGroup = 'prescription' | 'supplement' | 'peptide' | 'nutrition' | 'exercise' | 'sleep';
+export type PlanField = 'dose' | 'form' | 'route' | 'frequency';
+export interface PlanItem {
+  id: string;
+  group: PlanGroup;
+  name: string;
+  change: 'new' | 'continued' | 'changed' | 'discontinued';
+  dose?: string;
+  form?: string;
+  route?: string;
+  frequency?: string;
+  options?: Partial<Record<PlanField, string[]>>;
+  purpose: string;
+  flag?: 'proposed' | 'incomplete'; // * or † from the report: blocks approval until resolved
+  flagNote?: string; // "strength per troche missing"
+  missing?: PlanField[]; // fields a † item needs filled before it can be marked reviewed
+  resolved?: boolean;
+  sideNote?: string;
+  removed?: boolean;
+  needsConsentFormId?: string;
+  supplier?: 'compounding' | 'retail' | 'fullscript' | 'peptide_supplier';
+}
+
+export type GateType =
+  | 'np_pre_review' | 'coach_wording' | 'completeness' | 'np_final_review'
+  | 'release' | 'quarterly_review' | 'safety_close';
+export interface Approval {
+  id: string;
+  gate: GateType;
+  memberId: string;
+  reportId?: string;
+  reportVersion?: number;
+  outcome: 'approved' | 'sent_back';
+  reason?: string;
+  byId: string;
+  at: string;
+}

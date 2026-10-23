@@ -1,10 +1,14 @@
 // Pure data operations. Each op mutates a cloned DemoData draft. Every op writes a TimelineEvent.
 import type {
   Member, FormAssignment, Visit, SafetyFlag, FollowUp, TimelineEvent, MemberNotice, IntakeValue, MenoStatus, Milestone,
+  Result, Report, Approval, Finding, PlanField,
 } from '../types';
 import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION, TESTELLE_INTAKE } from '../data/seed';
 import { INTAKE } from '../data/intake';
 import { fmtDateTime, fmtDate } from '../lib/time';
+import { baselineLabs, draftFindings, draftPlan, BASELINE_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
+import { STAFF } from '../data/seed';
+import { canApprovePreReview, unfilled } from './guards';
 
 export interface DemoData {
   now: string;
@@ -17,6 +21,9 @@ export interface DemoData {
   notices: MemberNotice[];
   intake: Record<string, Record<string, IntakeValue>>;
   intakeDone: Record<string, string[]>; // completed section ids per member
+  results: Result[];
+  reports: Report[];
+  approvals: Approval[];
   seq: number;
 }
 
@@ -153,9 +160,128 @@ export function labsReceived(d: DemoData, visitId: string, byId: string) {
   const v = d.visits.find((x) => x.id === visitId);
   if (!v) return;
   v.labsReceivedAt = d.now;
+  d.results = d.results.filter((r) => r.memberId !== v.memberId).concat(baselineLabs(v.memberId, v.id));
   log(d, v.memberId, byId, 'labs_received', 'Lab results received (sample lab PDF attached)');
   notify(d, v.memberId, 'Your lab results are in. Your care team is preparing your report.');
+  if (!d.reports.some((r) => r.memberId === v.memberId && r.kind === 'baseline')) {
+    d.reports.push({
+      id: `r-${v.memberId}-baseline`, memberId: v.memberId, kind: 'baseline', version: 1, status: 'building',
+      scores: { ...BASELINE_SCORES }, focusAreas: [...BASELINE_FOCUS], findings: [], plan: [], protocol: PROTOCOL_NAME,
+      building: { kind: 'draft', startedAt: d.now },
+    });
+    log(d, v.memberId, 'system', 'draft_building', `Building draft HEAL plan from the ${PROTOCOL_NAME.toLowerCase()}`);
+  }
   refreshStep(d, v.memberId);
+}
+
+// ---------- Report: draft and NP pre-review (N2) ----------
+export const report = (d: DemoData, reportId: string) => {
+  const r = d.reports.find((x) => x.id === reportId);
+  if (!r) throw new Error(`Unknown report ${reportId}`);
+  return r;
+};
+const staffName = (sid: string) => STAFF.find((s) => s.id === sid)?.name ?? sid;
+const markerOf = (d: DemoData, f: Finding) => d.results.find((r) => r.id === f.resultId)?.marker ?? f.resultId;
+
+// End of the simulated engine run. A rebuild keeps the NP's decisions and edits and bumps the version.
+export function finishDraft(d: DemoData, reportId: string) {
+  const r = report(d, reportId);
+  if (r.status !== 'building' || !r.building) return;
+  if (r.building.kind === 'rebuild') {
+    r.version += 1;
+    log(d, r.memberId, 'system', 'draft_ready', `Draft rebuilt as v${r.version} with the change applied: "${r.building.reason}". Back with the NP for pre-review`);
+  } else {
+    r.findings = draftFindings().filter((f) => d.results.some((x) => x.id === f.resultId && x.memberId === r.memberId));
+    r.plan = draftPlan();
+    log(d, r.memberId, 'system', 'draft_ready', `Draft HEAL plan v${r.version} ready: ${r.findings.length} findings, ${r.plan.length} plan items. Waiting on NP pre-review`);
+  }
+  r.status = 'draft';
+  r.builtAt = d.now;
+  delete r.building;
+  refreshStep(d, r.memberId);
+}
+
+const DECISION_LABEL = { treat: 'Treat', refer: 'Refer', monitor: 'Monitor', dismiss: 'Dismiss' } as const;
+export function decideFinding(d: DemoData, reportId: string, findingId: string, decision: NonNullable<Finding['decision']>, byId: string) {
+  const r = report(d, reportId);
+  const f = r.findings.find((x) => x.id === findingId);
+  if (!f || r.status !== 'draft') return;
+  f.decision = decision;
+  f.decidedById = byId;
+  f.decidedAt = d.now;
+  log(d, r.memberId, byId, 'finding_decided', `Finding ${markerOf(d, f)}: ${DECISION_LABEL[decision]}`);
+}
+
+export function noteFinding(d: DemoData, reportId: string, findingId: string, note: string, byId: string) {
+  const r = report(d, reportId);
+  const f = r.findings.find((x) => x.id === findingId);
+  if (!f || r.status !== 'draft') return;
+  f.note = note.trim() || undefined;
+  log(d, r.memberId, byId, 'finding_note', f.note ? `Note on ${markerOf(d, f)}: "${f.note}"` : `Note on ${markerOf(d, f)} removed`);
+}
+
+// Demo shortcut: every finding still open becomes Monitor.
+export function monitorRemaining(d: DemoData, reportId: string, byId: string) {
+  const r = report(d, reportId);
+  const open = r.findings.filter((f) => !f.decision);
+  if (!open.length || r.status !== 'draft') return;
+  for (const f of open) Object.assign(f, { decision: 'monitor', decidedById: byId, decidedAt: d.now });
+  log(d, r.memberId, byId, 'finding_decided', `${open.length} remaining findings set to Monitor: ${open.map((f) => markerOf(d, f)).join(', ')}`);
+}
+
+export function editPlanItem(d: DemoData, reportId: string, itemId: string, field: PlanField, value: string, byId: string) {
+  const r = report(d, reportId);
+  const item = r.plan.find((x) => x.id === itemId);
+  if (!item || r.status !== 'draft' || item[field] === value) return;
+  const before = item[field];
+  item[field] = value;
+  if (field === 'form' && FORM_ROUTE[value] && (!item.options?.route || item.options.route.includes(FORM_ROUTE[value]))) item.route = FORM_ROUTE[value];
+  if (item.change === 'continued') item.change = 'changed';
+  log(d, r.memberId, byId, 'plan_edit', `${item.name}: ${FIELD_LABEL[field].toLowerCase()} ${before ? `${before} → ` : 'set to '}${value}`);
+}
+
+export function setSideNote(d: DemoData, reportId: string, itemId: string, note: string, byId: string) {
+  const r = report(d, reportId);
+  const item = r.plan.find((x) => x.id === itemId);
+  if (!item || r.status !== 'draft') return;
+  item.sideNote = note.trim() || undefined;
+  log(d, r.memberId, byId, 'plan_note', item.sideNote ? `${item.name}: side note "${item.sideNote}"` : `${item.name}: side note removed`);
+}
+
+export function reviewPlanItem(d: DemoData, reportId: string, itemId: string, byId: string) {
+  const r = report(d, reportId);
+  const item = r.plan.find((x) => x.id === itemId);
+  if (!item || !item.flag || r.status !== 'draft' || unfilled(item).length) return;
+  item.resolved = true;
+  log(d, r.memberId, byId, 'plan_reviewed', `${item.name}: ${item.flag === 'proposed' ? 'proposed step reviewed and kept' : 'instruction completed and reviewed'}`);
+}
+
+export function removePlanItem(d: DemoData, reportId: string, itemId: string, removed: boolean, byId: string) {
+  const r = report(d, reportId);
+  const item = r.plan.find((x) => x.id === itemId);
+  if (!item || r.status !== 'draft') return;
+  item.removed = removed;
+  log(d, r.memberId, byId, 'plan_edit', `${item.name} ${removed ? 'removed from' : 'restored to'} the plan`);
+}
+
+export function approvePreReview(d: DemoData, reportId: string, byId: string): boolean {
+  const r = report(d, reportId);
+  if (!canApprovePreReview(r, d.results).ok) return false;
+  r.status = 'pre_reviewed';
+  d.approvals.push({ id: id(d, 'ap'), gate: 'np_pre_review', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'approved', byId, at: d.now });
+  log(d, r.memberId, byId, 'approval', `NP pre-review approved · v${r.version} · ${staffName(byId)}. Wording review is with the Coach`);
+  refreshStep(d, r.memberId);
+  return true;
+}
+
+export function sendBackDraft(d: DemoData, reportId: string, reason: string, byId: string) {
+  const r = report(d, reportId);
+  if (r.status !== 'draft' || !reason.trim()) return;
+  d.approvals.push({ id: id(d, 'ap'), gate: 'np_pre_review', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'sent_back', reason, byId, at: d.now });
+  r.status = 'building';
+  r.building = { kind: 'rebuild', reason, startedAt: d.now };
+  log(d, r.memberId, byId, 'sent_back', `Draft v${r.version} sent back by ${staffName(byId)}: "${reason}". Rebuilding`);
+  refreshStep(d, r.memberId);
 }
 
 export function refreshStep(d: DemoData, memberId: string) {
@@ -165,7 +291,11 @@ export function refreshStep(d: DemoData, memberId: string) {
   const draw = d.visits.find((x) => x.memberId === memberId && x.type === 'blood_draw');
   const pct = Math.round((intake?.progress ?? 0) * 100);
   const intakePart = intake?.status === 'signed' ? 'Intake done' : `Intake ${pct}%`;
-  const labsPart = draw?.labsReceivedAt ? 'labs received' : draw?.status === 'done' ? 'labs awaited' : 'blood draw booked';
+  const rep = d.reports.find((x) => x.memberId === memberId && x.kind === 'baseline');
+  const labsPart = rep?.status === 'building' ? 'draft building'
+    : rep?.status === 'draft' ? 'waiting on NP pre-review'
+      : rep?.status === 'pre_reviewed' ? 'waiting on Coach wording review'
+        : draw?.labsReceivedAt ? 'labs received' : draw?.status === 'done' ? 'labs awaited' : 'blood draw booked';
   m.step = `${intakePart} · ${labsPart}`;
 }
 

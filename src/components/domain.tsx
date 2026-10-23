@@ -1,7 +1,7 @@
 import { clsx } from 'clsx';
 import { Check } from 'lucide-react';
-import type { Phase, Milestone, QueueItem } from '../types';
-import { Button, Avatar, Chip } from './ui';
+import type { Phase, Milestone, QueueItem, Band } from '../types';
+import { Button, Avatar, Chip, type Tone } from './ui';
 import { CATEGORY_LABEL } from '../state/queues';
 
 export const PHASES: { id: Phase; label: string }[] = [
@@ -96,4 +96,13 @@ export function QueueRow({ item, memberName, ownerName, onAction, onOpen }: {
       </span>
     </li>
   );
+}
+
+const BAND: Record<Band, { tone: Tone; label: string }> = {
+  optimal: { tone: 'ok', label: 'Optimal' }, elite: { tone: 'ok', label: 'Elite' }, watch: { tone: 'watch', label: 'Watch' },
+  needs_attention: { tone: 'attn', label: 'Needs attention' }, below_target: { tone: 'attn', label: 'Below target' },
+  not_retested: { tone: 'neutral', label: 'Not retested' }, not_scored: { tone: 'neutral', label: 'Not scored' },
+};
+export function BandChip({ band }: { band: Band }) {
+  return <Chip tone={BAND[band].tone}>{BAND[band].label}</Chip>;
 }
