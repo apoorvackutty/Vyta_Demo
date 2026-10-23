@@ -3,6 +3,7 @@ import type { QueueItem, StaffRole, QueueCategory } from '../types';
 import type { DemoData } from './ops';
 import { STATIC_TASKS } from '../data/seed';
 import { canApprovePreReview } from './guards';
+import { can, isSuperAdmin } from './permissions';
 import { ageLabel, daysBetween, fmtDateTime, fmtDate, toMs } from '../lib/time';
 
 function snoozed(d: DemoData, taskKey: string) {
@@ -10,7 +11,7 @@ function snoozed(d: DemoData, taskKey: string) {
 }
 
 export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
-  const items: (QueueItem & { roles: StaffRole[] })[] = [];
+  const items: QueueItem[] = [];
 
   for (const f of d.flags.filter((x) => x.status !== 'closed')) {
     items.push({
@@ -116,14 +117,13 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
       key: t.id, memberId: t.memberId, category: t.category, roles: t.roles, label: t.label, reason: t.reason,
       ageLabel: t.ageLabel, priority: t.priority,
       primary: { label: 'Open', action: { type: 'open_record', memberId: t.memberId } },
-      secondary: t.roles.includes('guide') && role === 'guide' ? [{ label: 'Snooze', action: { type: 'snooze', memberId: t.memberId, taskKey: t.id } }] : undefined,
+      secondary: t.roles.includes('guide') && can(role, 'snooze') ? [{ label: 'Snooze', action: { type: 'snooze', memberId: t.memberId, taskKey: t.id } }] : undefined,
     });
   }
 
   return items
-    .filter((i) => role === 'admin' || i.roles.includes(role))
-    .sort((a, b) => a.priority - b.priority)
-    .map(({ roles, ...rest }) => rest);
+    .filter((i) => isSuperAdmin(role) || i.roles.includes(role))
+    .sort((a, b) => a.priority - b.priority);
 }
 
 export const CATEGORY_LABEL: Record<QueueCategory, string> = {
@@ -136,5 +136,5 @@ export const ROLE_TILES: Record<StaffRole, QueueCategory[]> = {
   ma: ['visits', 'labs', 'overdue'],
   np: ['safety', 'reviews', 'orders'],
   coach: ['reviews', 'engagement'],
-  admin: ['safety', 'overdue', 'visits', 'reviews', 'messages'],
+  admin: ['safety', 'onboard', 'overdue', 'forms', 'visits', 'labs', 'reviews', 'messages'],
 };

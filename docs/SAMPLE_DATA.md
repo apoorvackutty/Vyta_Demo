@@ -15,7 +15,7 @@
 | s-ma | Jordan Park | ma | Medical Assistant |
 | s-np | Dana Reyes | np | Nurse Practitioner |
 | s-coach | Sienna Clarke | coach | Wellness Coach |
-| s-admin | Quinn Harper | admin | Clinic Admin |
+| s-admin | Quinn Harper | admin | Clinic owner · Super admin |
 
 ## 2. Lead member: Testelle M
 

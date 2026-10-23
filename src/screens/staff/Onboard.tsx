@@ -7,6 +7,10 @@ import { useDemo, ops } from '../../state/store';
 import { Button, Card, Field, inputCls } from '../../components/ui';
 import { BLOOD_DRAW_SLOTS, CLINIC_LOCATION, FORMS, ONBOARDING_FORM_IDS } from '../../data/seed';
 import NotFound from './NotFound';
+import { useStaffRole } from '../../components/shell';
+import { ActingNote } from '../../components/domain';
+import { STAFF_BY_ROLE } from '../../data/seed';
+import { can, actingAs } from '../../state/permissions';
 import { fmtDateTime } from '../../lib/time';
 import type { MenoStatus, Milestone } from '../../types';
 
@@ -14,6 +18,7 @@ export default function Onboard() {
   const { id = '' } = useParams();
   const nav = useNavigate();
   const s = useDemo();
+  const role = useStaffRole();
   const m = s.members.find((x) => x.id === id);
   const [meno, setMeno] = useState<MenoStatus>(m?.menoStatus ?? 'peri');
   const [goals, setGoals] = useState<string[]>(m?.goals ?? []);
@@ -38,26 +43,30 @@ export default function Onboard() {
           </ul>
           <p className="mt-5 text-sm text-muted">If her intake stalls, it comes back to your Today list after 2 days.</p>
           <div className="mt-6 flex justify-center gap-2">
-            <Button variant="secondary" onClick={() => nav('/staff/guide/today')}>Back to Today</Button>
-            <Button onClick={() => nav(`/staff/guide/member/${m.id}`)}>Open her record</Button>
+            <Button variant="secondary" onClick={() => nav(`/staff/${role}/today`)}>Back to Today</Button>
+            <Button onClick={() => nav(`/staff/${role}/member/${m.id}`)}>Open her record</Button>
           </div>
         </Card>
       </div>
     );
   }
   const selected = ms.filter((x) => x.selected).length;
-  const ok = selected >= 3 && selected <= 6 && goals.some((g) => g.trim());
-  const missing = [selected < 3 && 'pick at least 3 milestones', selected > 6 && 'keep it to 6 milestones', !goals.some((g) => g.trim()) && 'add at least one goal'].filter(Boolean).join(', ');
+  const allowed = can(role, 'onboard');
+  const ok = allowed && selected >= 3 && selected <= 6 && goals.some((g) => g.trim());
+  const missing = [!allowed && 'switch to the Guide (onboarding is hers)', selected < 3 && 'pick at least 3 milestones', selected > 6 && 'keep it to 6 milestones', !goals.some((g) => g.trim()) && 'add at least one goal'].filter(Boolean).join(', ');
 
   const submit = () => {
-    s.run((d) => ops.onboard(d, m.id, { menoStatus: meno, goals, milestones: ms, slotAt: slot, byId: 's-guide' }), `Sent to ${m.name.split(' ')[0]}'s phone · blood draw booked`);
+    s.run((d) => ops.onboard(d, m.id, { menoStatus: meno, goals, milestones: ms, slotAt: slot, byId: STAFF_BY_ROLE[role] }), `Sent to ${m.name.split(' ')[0]}'s phone · blood draw booked`);
     window.scrollTo({ top: 0 });
   };
 
   return (
     <div className="mx-auto max-w-4xl px-6 pt-6">
       <button onClick={() => nav(-1)} className="mb-3 flex min-h-[28px] items-center gap-1 text-sm text-muted hover:text-plum-900"><ArrowLeft size={16} /> Back</button>
-      <h1 className="font-display text-[32px] font-semibold text-plum-700">Onboard {m.name}</h1>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="font-display text-[32px] font-semibold text-plum-700">Onboard {m.name}</h1>
+        <ActingNote text={actingAs(role, 'onboard')} />
+      </div>
       <p className="mb-6 text-sm text-muted">Discovery call done and paid. Capture her goals while they're fresh, then send everything in one step. Intake and blood draw happen at the same time.</p>
 
       <div className="space-y-5">
@@ -127,7 +136,7 @@ export default function Onboard() {
 
       <div className="sticky bottom-0 z-30 -mx-6 mt-6 border-t border-line bg-paper/95 px-6 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
-          <span id="send-why" className="text-sm text-muted" aria-live="polite">{ok ? 'Ready to send.' : `To send: ${missing}.`}</span>
+          <span id="send-why" className="flex flex-wrap items-center gap-2 text-sm text-muted" aria-live="polite"><ActingNote text={actingAs(role, 'onboard')} />{ok ? 'Ready to send.' : `To send: ${missing}.`}</span>
           <Button size="lg" disabled={!ok} onClick={submit} aria-describedby="send-why">Send intake and book blood draw</Button>
         </div>
       </div>

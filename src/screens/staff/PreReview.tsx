@@ -5,7 +5,8 @@ import { clsx } from 'clsx';
 import { ArrowLeft, Check, FileText, Loader2, MessageSquarePlus, Pencil, RotateCcw, StickyNote, Trash2 } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
-import { BandChip } from '../../components/domain';
+import { BandChip, ActingNote } from '../../components/domain';
+import { can, actingAs } from '../../state/permissions';
 import { SourceDialog, fmtValue } from '../../components/results';
 import { Button, Card, Chip, Dialog, EmptyState, Field, ProgressBar, inputCls } from '../../components/ui';
 import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
@@ -46,7 +47,7 @@ export default function PreReview() {
   }
   if (report.status === 'building') return <div className="mx-auto max-w-3xl px-6 py-6">{back}<Building key={report.building?.startedAt} report={report} name={m.name} /></div>;
 
-  const canEdit = (role === 'np' || role === 'admin') && report.status === 'draft';
+  const canEdit = can(role, 'pre_review') && report.status === 'draft';
   const results = s.results.filter((r) => r.memberId === m.id);
   const approval = s.approvals.filter((a) => a.reportId === report.id && a.gate === 'np_pre_review' && a.outcome === 'approved').slice(-1)[0];
   const intake = s.intake[m.id] ?? {};
@@ -66,7 +67,7 @@ export default function PreReview() {
             </p>
           </div>
           {report.status === 'draft'
-            ? <Chip tone="watch">Waiting on NP pre-review</Chip>
+            ? <span className="flex flex-wrap items-center gap-2"><ActingNote text={actingAs(role, 'pre_review')} /><Chip tone="watch">Waiting on NP pre-review</Chip></span>
             : approval && <Chip tone="ok"><Check size={13} /> Approved · {staffName(approval.byId)} · {fmtTime(approval.at)} · v{approval.reportVersion}</Chip>}
         </header>
 
@@ -397,7 +398,8 @@ function GateFooter({ report, results, canEdit, memberName }: { report: Report; 
             <span className="sm:hidden">Accept suggestions ({suggestable})</span><span className="hidden sm:inline">Accept protocol suggestions ({suggestable} left)</span>
           </Button>
         )}
-        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+        <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <ActingNote text={actingAs(role, 'pre_review')} className="max-sm:hidden" />
           <Button variant="danger" className="flex-1 sm:flex-none" disabled={!canEdit} onClick={() => setSendBack(true)}><span className="sm:hidden">Send back</span><span className="hidden sm:inline">Send back with reason</span></Button>
           <div className="group relative flex-1 sm:flex-none" onMouseLeave={() => setWhy(false)}>
             <Button aria-disabled={!check.ok || !canEdit} disabled={!canEdit} aria-describedby="gate-why"

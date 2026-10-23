@@ -1,5 +1,5 @@
 import { clsx } from 'clsx';
-import { Check } from 'lucide-react';
+import { Check, ShieldCheck } from 'lucide-react';
 import type { Phase, Milestone, QueueItem, Band, Program } from '../types';
 import { Button, Avatar, Chip, type Tone } from './ui';
 import { CATEGORY_LABEL } from '../state/queues';
@@ -76,15 +76,21 @@ export function KpiTile({ label, count, active, onClick, tone }: { label: string
   );
 }
 
-export function QueueRow({ item, memberName, ownerName, onAction, onOpen }: {
-  item: QueueItem; memberName: string; ownerName: string;
+// Small note beside an action the super admin takes for another role ("Acting as NP").
+export function ActingNote({ text, className }: { text: string | null; className?: string }) {
+  if (!text) return null;
+  return <span className={clsx('inline-flex items-center gap-1 rounded-full bg-info-bg px-2 py-0.5 text-xs font-medium text-info-fg', className)}><ShieldCheck size={12} aria-hidden="true" /> {text}</span>;
+}
+
+export function QueueRow({ item, memberName, ownerName, onAction, onOpen, actingNote }: {
+  item: QueueItem; memberName: string; ownerName: string; actingNote?: string | null;
   onAction: (a: NonNullable<QueueItem['primary']>['action']) => void; onOpen: () => void;
 }) {
   const bar = item.priority === 0 ? 'bg-danger-fg' : item.priority === 1 ? 'bg-terracotta-500' : item.priority === 2 ? 'bg-watch-fg/60' : 'bg-line';
   return (
     <li className={clsx('group relative flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-paper px-4 py-3 last:border-b-0 hover:bg-cream-100 sm:flex-nowrap', item.priority === 0 && 'bg-danger-bg/50')}>
       <span className={clsx('absolute left-0 top-0 h-full w-1', bar)} aria-hidden="true" />
-      <button onClick={onOpen} className="flex min-w-0 flex-1 basis-full items-center gap-3 text-left focus-visible:outline-none sm:basis-0" aria-label={`Open ${memberName}`}>
+      <button onClick={onOpen} className="flex min-w-0 flex-1 basis-full items-center gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500 sm:basis-0" aria-label={`Open ${memberName}`}>
         <Avatar name={memberName} size={34} />
         <span className="min-w-0">
           <span className="flex items-center gap-2">
@@ -97,7 +103,8 @@ export function QueueRow({ item, memberName, ownerName, onAction, onOpen }: {
       </button>
       <span className="hidden w-24 text-xs text-muted md:block">{ownerName}</span>
       <span className="ml-[46px] text-xs tabular-nums text-muted sm:ml-0 sm:w-10 sm:text-right">{item.ageLabel}</span>
-      <span className="ml-auto flex shrink-0 gap-2 sm:ml-0">
+      <span className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 sm:ml-0">
+        <ActingNote text={actingNote ?? null} />
         {item.secondary?.map((s) => <Button key={s.label} size="sm" variant="ghost" onClick={() => onAction(s.action)}>{s.label}</Button>)}
         {item.primary && <Button size="sm" onClick={() => onAction(item.primary!.action)}>{item.primary.label}</Button>}
       </span>

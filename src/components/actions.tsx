@@ -5,6 +5,7 @@ import type { QueueAction, StaffRole } from '../types';
 import { useDemo, ops } from '../state/store';
 import { STAFF_BY_ROLE } from '../data/seed';
 import { addDays } from '../lib/time';
+import { can, queueActionKind } from '../state/permissions';
 import { Button, Dialog, Field, inputCls } from './ui';
 
 const SNOOZE_REASONS = ['On antibiotics, retry later', 'Travelling', 'Asked to be contacted next week', 'Waiting on another provider', 'Other'];
@@ -22,16 +23,18 @@ export function useQueueActions(role: StaffRole) {
   const [outcome, setOutcome] = useState(CALL_OUTCOMES[0]);
 
   const handle = useCallback((a: QueueAction) => {
+    const kind = queueActionKind(a);
+    if (kind && !can(role, kind)) return;
     switch (a.type) {
       case 'open_record': nav(`/staff/${role}/member/${a.memberId}`); break;
-      case 'onboard': nav(`/staff/guide/onboard/${a.memberId}`); break;
+      case 'onboard': nav(`/staff/${role}/onboard/${a.memberId}`); break;
       case 'nudge': run((d) => ops.nudge(d, a.memberId, by, a.text), 'Reminder sent to her phone'); break;
       case 'snooze': setSnoozeFor({ memberId: a.memberId, taskKey: a.taskKey }); break;
       case 'log_call': setCallFor({ memberId: a.memberId, taskKey: a.taskKey }); break;
       case 'confirm_visit': run((d) => ops.confirmVisit(d, a.visitId, by), 'Blood draw confirmed'); break;
       case 'mark_drawn': run((d) => ops.markDrawn(d, a.visitId, by), 'Marked as drawn · sent to lab'); break;
       case 'labs_received': run((d) => ops.labsReceived(d, a.visitId, by), 'Labs received · building the draft HEAL plan'); break;
-      case 'pre_review': nav(`/staff/np/pre-review/${a.memberId}`); break;
+      case 'pre_review': nav(`/staff/${role}/pre-review/${a.memberId}`); break;
     }
   }, [nav, role, run, by]);
 
