@@ -51,12 +51,13 @@ function Stage() {
       <div className="flex">
         <div className="min-w-0 flex-1"><StaffRoutes /></div>
         {/* Wide screens: a column beside the staff view. Narrower: slides in over the right side so it always shows. */}
-        <aside aria-label="Member's phone" className="fixed bottom-0 right-0 z-30 max-h-[calc(100vh-96px)] max-w-full shrink-0 max-sm:hidden overflow-y-auto border-l border-line bg-cream-100 px-6 pb-6 pt-3 shadow-card xl:sticky xl:top-[44px] xl:z-auto xl:h-[calc(100vh-44px)] xl:max-h-none xl:shadow-none">
+        <aside aria-label="Member's phone" className="fixed bottom-0 right-0 z-30 max-h-[calc(100vh-96px)] max-w-full shrink-0 overflow-y-auto border-l border-line bg-cream-100 px-4 pb-6 pt-3 shadow-card max-sm:hidden md:sticky md:top-12 md:z-auto md:h-[calc(100vh-48px)] md:max-h-none md:shadow-none lg:top-[79px] lg:h-[calc(100vh-79px)] xl:top-[44px] xl:h-[calc(100vh-44px)] xl:px-6">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-medium text-muted">Testelle's phone, live</p>
             <button onClick={() => setSplit(false)} className="flex min-h-[32px] items-center gap-1 rounded-md px-2 text-xs font-medium text-plum-700 hover:bg-plum-100"><X size={14} aria-hidden="true" /> Hide phone</button>
           </div>
-          <ErrorBoundary><PhoneFrame><MemberApp /></PhoneFrame></ErrorBoundary>
+          {/* Beside the staff view the phone is drawn a little smaller until there's room for full size. */}
+          <div className="[zoom:0.78] xl:[zoom:1]"><ErrorBoundary><PhoneFrame><MemberApp /></PhoneFrame></ErrorBoundary></div>
         </aside>
       </div>
     );

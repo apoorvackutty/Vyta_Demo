@@ -116,25 +116,28 @@ export function StaffShell({ children }: { children: ReactNode }) {
   // Path only: switching a record tab (?tab=) must keep focus on the tabs.
   useAnnouncePage(pathname, () => document.getElementById('main-content'));
   useEffect(() => { window.scrollTo({ top: 0 }); }, [pathname]); // a new page starts at the top
-  const { now, signOut, toast } = useDemo();
+  const { now, signOut, toast, split } = useDemo();
   const me = STAFF.find((s) => s.id === STAFF_BY_ROLE[role])!;
+  // With the phone beside it on a mid-size screen, the sidebar shrinks to icons to give the staff view room.
+  const slim = split;
+  const label = slim ? 'sr-only xl:not-sr-only' : '';
   const link = ({ isActive }: { isActive: boolean }) => clsx('flex items-center gap-3 rounded-lg px-3 py-2 text-sm', isActive ? 'bg-paper/10 font-semibold text-paper' : 'text-cream-200 hover:bg-paper/5');
   const topLink = ({ isActive }: { isActive: boolean }) => clsx('flex min-h-[40px] items-center gap-1.5 rounded-lg px-3 text-sm', isActive ? 'bg-plum-100 font-semibold text-plum-700' : 'text-plum-900 hover:bg-cream-100');
   const signOutNow = () => { signOut('staff'); toast(`Signed out. See you soon, ${me.name.split(' ')[0]}`); };
   return (
     <div className="flex min-h-[calc(100vh-44px)]">
-      <aside className="hidden w-56 shrink-0 flex-col bg-plum-800 px-3 py-5 md:flex">
-        <img src="/assets/logo-lotus-wordmark.png" alt="Vyta MenoClinic" className="mx-auto mb-6 h-16 w-auto invert" />
+      <aside className={clsx('hidden shrink-0 flex-col bg-plum-800 py-5 md:flex', slim ? 'w-16 px-2 xl:w-56 xl:px-3' : 'w-56 px-3')}>
+        <img src="/assets/logo-lotus-wordmark.png" alt="Vyta MenoClinic" className={clsx('mx-auto mb-6 w-auto invert', slim ? 'h-9 xl:h-16' : 'h-16')} />
         <nav aria-label="Main" className="flex flex-col gap-1">
-          <NavLink to={`/staff/${role}/today`} className={link}><LayoutList size={18} /> Today</NavLink>
-          <NavLink to={`/staff/${role}/members`} className={link}><Users size={18} /> Members</NavLink>
+          <NavLink to={`/staff/${role}/today`} className={link}><LayoutList size={18} className="shrink-0" /> <span className={label}>Today</span></NavLink>
+          <NavLink to={`/staff/${role}/members`} className={link}><Users size={18} className="shrink-0" /> <span className={label}>Members</span></NavLink>
         </nav>
         <div className="mt-auto rounded-lg bg-paper/5 p-2">
           <div className="flex items-center gap-2">
             <Avatar name={me.name} size={30} />
-            <span className="text-xs leading-tight text-cream-100"><span className="block font-semibold">{me.name}</span>{me.title}</span>
+            <span className={clsx('text-xs leading-tight text-cream-100', label)}><span className="block font-semibold">{me.name}</span>{me.title}</span>
           </div>
-          <button onClick={signOutNow} className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-cream-200 hover:bg-paper/10"><LogOut size={14} /> Sign out</button>
+          <button onClick={signOutNow} className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-cream-200 hover:bg-paper/10"><LogOut size={14} className="shrink-0" /> <span className={label}>Sign out</span></button>
         </div>
       </aside>
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-cream-100 focus:outline-none">
