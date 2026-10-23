@@ -8,7 +8,7 @@ export default function NotFound({ title = "We couldn't find that page", body = 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
       <Card>
-        <EmptyState title={title} body={body}
+        <EmptyState heading="h1" title={title} body={body}
           action={<Link to={`/staff/${role}/today`} className="rounded-lg bg-plum-700 px-4 py-2 text-sm font-medium text-paper hover:bg-plum-800">Back to Today</Link>} />
       </Card>
     </div>

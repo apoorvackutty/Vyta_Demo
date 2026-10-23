@@ -25,12 +25,12 @@ export function PhaseTracker({ phase, step }: { phase: Phase; step: string }) {
         return (
           <li key={p.id} className="relative flex flex-1 flex-col items-center text-center" aria-current={current ? 'step' : undefined}>
             {i > 0 && <span className={clsx('absolute right-1/2 top-3 h-0.5 w-full -translate-y-1/2', i <= idx ? 'bg-plum-700' : 'bg-line')} aria-hidden="true" />}
-            <span className={clsx('relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 text-[11px] font-semibold',
+            <span className={clsx('relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-semibold',
               done && 'border-plum-700 bg-plum-700 text-paper', current && 'border-terracotta-500 bg-paper text-terracotta-700', !done && !current && 'border-line bg-paper text-muted')}>
               {done ? <Check size={13} /> : i + 1}
             </span>
             <span className={clsx('mt-1.5 text-xs', current ? 'font-semibold text-plum-900' : 'text-muted')}>{p.label}</span>
-            {current && <span className="mt-0.5 text-[11px] text-terracotta-700">{step}</span>}
+            {current && <span className="mt-0.5 text-xs text-terracotta-700">{step}</span>}
           </li>
         );
       })}

@@ -1,10 +1,11 @@
 // Member app (phone). Uses a small in-app router so it can sit next to the staff view.
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import { clsx } from 'clsx';
 import { Home as HomeIcon, ClipboardCheck, FileText, Sparkles, Menu, ChevronLeft, ChevronRight, Check, Bell, X, Lock, Droplet, CalendarDays, LogOut, AlertCircle } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
 import { Avatar, Button, Chip, ProgressBar, inputCls } from '../../components/ui';
 import { MemberSignIn } from '../SignIn';
+import { useAnnouncePage } from '../../components/shell';
 import { FORMS, STAFF, BLOOD_DRAW_PREP } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
@@ -44,12 +45,17 @@ function MemberAppInner() {
   const signedIn = useDemo((s) => s.memberSignedIn);
   const name = useDemo((s) => s.members.find((m) => m.id === MEMBER_ID)?.name ?? '');
   const [path, setPath] = useState('/home');
-  if (!signedIn) return <MemberSignIn name={name} />;
-  const go = (p: string) => { setPath(p); requestAnimationFrame(() => document.getElementById('member-scroll')?.scrollTo({ top: 0 })); };
+  const scroller = useRef<HTMLDivElement>(null);
+  // Each in-app screen change moves focus to its title, so screen readers hear the new page.
+  // Beside the staff view (split) the phone is secondary, so it leaves the browser tab's title alone.
+  const primary = useDemo((s) => s.role === 'member') || window.location.pathname.startsWith('/member');
+  useAnnouncePage(`${signedIn}${path}`, () => scroller.current, 'Vyta', primary);
+  if (!signedIn) return <div ref={scroller} className="h-full"><MemberSignIn name={name} /></div>;
+  const go = (p: string) => { setPath(p); requestAnimationFrame(() => scroller.current?.scrollTo({ top: 0 })); };
   return (
     <NavCtx.Provider value={{ path, go }}>
       <div className="flex h-full flex-col">
-        <div id="member-scroll" className="min-h-0 flex-1 overflow-y-auto">{screenFor(path)}</div>
+        <div id="member-scroll" ref={scroller} className="min-h-0 flex-1 overflow-y-auto">{screenFor(path)}</div>
         <TabBar />
       </div>
     </NavCtx.Provider>
@@ -65,9 +71,9 @@ function TabBar() {
       {tabs.map(([to, label, icon]) => {
         const active = to === '/home' ? path === '/home' : path.startsWith(to);
         return (
-          <button key={to} onClick={() => go(to)} aria-current={active ? 'page' : undefined} className={clsx('relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px]', active ? 'font-semibold text-plum-700' : 'text-muted')}>
+          <button key={to} onClick={() => go(to)} aria-current={active ? 'page' : undefined} className={clsx('relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-xs', active ? 'font-semibold text-plum-700' : 'text-muted')}>
             {icon}{label}
-            {to === '/home' && unread > 0 && <span className="absolute right-[22%] top-1.5 min-w-[18px] rounded-full bg-terracotta-700 px-1 text-[10px] font-semibold leading-[18px] text-paper">{unread}<span className="sr-only"> new</span></span>}
+            {to === '/home' && unread > 0 && <span className="absolute right-[22%] top-1.5 min-w-[18px] rounded-full bg-terracotta-700 px-1 text-xs font-semibold leading-[18px] text-paper">{unread}<span className="sr-only"> new</span></span>}
           </button>
         );
       })}
@@ -139,7 +145,7 @@ function Home() {
         <div className="mx-4 -mt-3 flex items-start gap-3 rounded-mcard border border-line bg-paper p-4 shadow-card">
           <Bell size={18} className="mt-0.5 shrink-0 text-terracotta-700" />
           <p className="flex-1 text-[14px] text-plum-900">{latest.text}<span className="block text-[12px] text-muted">{fmtDate(latest.at)} · {fmtTime(latest.at)}</span></p>
-          <button aria-label="Dismiss" onClick={() => s.markNoticesRead(MEMBER_ID)} className="flex h-8 w-8 items-center justify-center text-muted"><X size={16} /></button>
+          <button aria-label="Dismiss" onClick={() => s.markNoticesRead(MEMBER_ID)} className="-m-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted"><X size={16} /></button>
         </div>
       )}
 
@@ -252,7 +258,7 @@ function FormView({ aid }: { aid: string }) {
           {!name && (
             <p id="sig-hint" className="flex min-h-[44px] items-center gap-1 text-[13px] text-muted">
               Press Tab or
-              <button type="button" className="font-medium text-terracotta-700 underline underline-offset-2" onClick={() => setName(m.name)}>tap here</button>
+              <button type="button" className="inline-flex min-h-[44px] items-center font-medium text-terracotta-700 underline underline-offset-2" onClick={() => setName(m.name)}>tap here</button>
               to fill in {m.name}
             </p>
           )}
@@ -318,7 +324,7 @@ function IntakeSectionView({ sid }: { sid: string }) {
   // Free-text questions are follow-ups ("if yes, tell us more"), so only choice questions count as blank.
   const blank = sec.questions.filter((q) => q.type !== 'text' && !hasAnswer(ans[q.id]));
   const safetyBlank = blank.filter((q) => q.safety);
-  const scrollTo = (qid?: string) => qid && document.getElementById(`q-${qid}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const scrollTo = (qid?: string) => qid && document.getElementById(`q-${qid}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
   const advance = () => {
     if (safetyBlank.length) { setCheck('safety'); scrollTo(safetyBlank[0].id); return; }
     if (blank.length && check !== 'blanks') { setCheck('blanks'); return; }
@@ -350,7 +356,7 @@ function IntakeSectionView({ sid }: { sid: string }) {
         {check === 'blanks' && (
           <div role="alert" className="mb-3 rounded-lg bg-watch-bg p-3 text-[13px] text-watch-fg">
             <p>You've left {blank.length} question{blank.length > 1 ? 's' : ''} blank. That's fine: you can come back to {blank.length > 1 ? 'them' : 'it'} any time.</p>
-            <button type="button" className="mt-1 min-h-[32px] font-medium underline underline-offset-2" onClick={() => scrollTo(blank[0]?.id)}>Show me</button>
+            <button type="button" className="mt-1 min-h-[44px] font-medium underline underline-offset-2" onClick={() => scrollTo(blank[0]?.id)}>Show me</button>
           </div>
         )}
         <div className="flex gap-2">
@@ -408,7 +414,9 @@ function QuestionInput({ q, value, onChange, flag }: { q: IntakeQuestion; value:
 }
 
 function BloodDraw() {
-  const { draw } = useMember();
+  const { s, m, draw } = useMember();
+  const [changeOpen, setChangeOpen] = useState(false);
+  const guide = STAFF.find((x) => x.id === m.guideId)!;
   return (
     <div className="pb-6">
       <Top title="Blood draw" back="/home" />
@@ -425,9 +433,14 @@ function BloodDraw() {
             {draw.status === 'done' && <p className="mt-3 text-[14px] text-plum-900">{draw.labsReceivedAt ? 'Your results are in. Your care team is preparing your report.' : "Thanks. Your sample is at the lab. Results usually take 3–5 days, and we'll let you know."}</p>}
             {draw.status !== 'done' && (
               <div className="mt-4 flex gap-2">
-                <Button variant="secondary" className="flex-1" disabled title="Connects later">Add to calendar</Button>
-                <Button variant="ghost" className="flex-1" disabled title="Messages arrive in the next build">Change time</Button>
+                <Button variant="secondary" className="flex-1" onClick={() => s.run((d) => ops.addToCalendar(d, draw.id), 'Added to your calendar')}>Add to calendar</Button>
+                <Button variant="ghost" className="flex-1" aria-expanded={changeOpen} onClick={() => setChangeOpen((o) => !o)}>Change time</Button>
               </div>
+            )}
+            {changeOpen && draw.status !== 'done' && (
+              <p className="mt-3 rounded-lg bg-cream-100 p-3 text-[14px] text-plum-900">
+                To change the time, call the clinic on <a href="tel:+18015550142" className="font-medium text-terracotta-700 underline underline-offset-2">(801) 555-0142</a>, or tell {guide.name.split(' ')[0]}, your Guide, when she calls.
+              </p>
             )}
           </section>
           {draw.status !== 'done' && (
@@ -498,7 +511,7 @@ function Sage() {
     <div className="pb-6">
       <Top title="SAGE" />
       <div className="m-4 rounded-mcard border border-line bg-paper p-4 text-[14px] text-plum-900 shadow-card">
-        <p><span className="mr-2 rounded bg-plum-100 px-1.5 py-0.5 text-[11px] font-semibold text-plum-700">AI</span>I'm SAGE, an AI. I can explain your report once it's ready. I can't give medical advice.</p>
+        <p><span className="mr-2 rounded bg-plum-100 px-1.5 py-0.5 text-xs font-semibold text-plum-700">AI</span>I'm SAGE, an AI. I can explain your report once it's ready. I can't give medical advice.</p>
         <p className="mt-2 font-semibold text-danger-fg">Not for emergencies: call 911.</p>
       </div>
       <p className="px-6 text-center text-[13px] text-muted">Your report arrives on Your Vyta Day. Then you can ask me anything about it.</p>
@@ -516,7 +529,7 @@ function More() {
       <ul className="m-4 divide-y divide-line rounded-mcard bg-paper shadow-card">
         {items.map(([l, to]) => <li key={to}><button onClick={() => nav(to)} className="flex min-h-[56px] w-full items-center justify-between px-4 text-left text-[15px] text-plum-900">{l}<ChevronRight size={18} className="text-muted" /></button></li>)}
       </ul>
-      <button onClick={() => { signOut('member'); toast("You're signed out"); }} className="mx-4 flex min-h-[56px] w-[calc(100%-2rem)] items-center gap-3 rounded-mcard bg-paper px-4 text-left text-[15px] text-terracotta-700 shadow-card"><LogOut size={18} /> Sign out</button>
+      <button onClick={() => { nav('/home'); signOut('member'); toast("You're signed out"); }} className="mx-4 flex min-h-[56px] w-[calc(100%-2rem)] items-center gap-3 rounded-mcard bg-paper px-4 text-left text-[15px] text-terracotta-700 shadow-card"><LogOut size={18} /> Sign out</button>
     </div>
   );
 }
@@ -561,9 +574,9 @@ function MemberNotFound({ back = '/home' }: { back?: string }) {
 function DemoControls({ onFill, onSkip }: { onFill?: () => void; onSkip: () => void }) {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-muted/40 px-2 py-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Demo</span>
-      {onFill && <button type="button" onClick={onFill} className="min-h-[32px] rounded-md px-2 text-[12px] text-plum-700 underline">Fill the rest of this section</button>}
-      <button type="button" onClick={onSkip} className="min-h-[32px] rounded-md px-2 text-[12px] text-plum-700 underline">Skip to the end</button>
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted">Demo</span>
+      {onFill && <button type="button" onClick={onFill} className="min-h-[44px] rounded-md px-2 text-[13px] text-plum-700 underline">Fill the rest of this section</button>}
+      <button type="button" onClick={onSkip} className="min-h-[44px] rounded-md px-2 text-[13px] text-plum-700 underline">Skip to the end</button>
     </div>
   );
 }

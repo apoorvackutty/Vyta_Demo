@@ -43,7 +43,7 @@ export function useQueueActions(role: StaffRole) {
           <Button variant="ghost" onClick={() => setSnoozeFor(null)}>Cancel</Button>
           <Button disabled={reason === 'Other' && !note.trim()} onClick={() => {
             const r = reason === 'Other' ? note.trim() : note ? `${reason}: ${note}` : reason;
-            run((d) => ops.snooze(d, snoozeFor!.memberId, snoozeFor!.taskKey, r, addDays(now, days), by), `Snoozed for ${days} days`);
+            run((d) => ops.snooze(d, snoozeFor!.memberId, snoozeFor!.taskKey, r, addDays(now, days), by), `Snoozed for ${days} days`, undefined, { memberId: snoozeFor!.memberId, by });
             setSnoozeFor(null); setNote('');
           }}>Snooze</Button>
         </>}
@@ -67,7 +67,7 @@ export function useQueueActions(role: StaffRole) {
         open={!!callFor} title="Log a call" onClose={() => setCallFor(null)}
         footer={<>
           <Button variant="ghost" onClick={() => setCallFor(null)}>Cancel</Button>
-          <Button onClick={() => { run((d) => ops.logCall(d, callFor!.memberId, by, note ? `${outcome}. ${note}` : outcome), 'Call logged'); setCallFor(null); setNote(''); }}>Save</Button>
+          <Button onClick={() => { run((d) => ops.logCall(d, callFor!.memberId, by, note ? `${outcome}. ${note}` : outcome), 'Call logged', undefined, { memberId: callFor!.memberId, by }); setCallFor(null); setNote(''); }}>Save</Button>
         </>}
       >
         <Field label="Outcome" htmlFor="call-outcome">

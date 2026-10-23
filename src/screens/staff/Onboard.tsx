@@ -56,7 +56,7 @@ export default function Onboard() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 pt-6">
-      <button onClick={() => nav(-1)} className="mb-3 flex items-center gap-1 text-sm text-muted hover:text-plum-900"><ArrowLeft size={16} /> Back</button>
+      <button onClick={() => nav(-1)} className="mb-3 flex min-h-[28px] items-center gap-1 text-sm text-muted hover:text-plum-900"><ArrowLeft size={16} /> Back</button>
       <h1 className="font-display text-[32px] font-semibold text-plum-700">Onboard {m.name}</h1>
       <p className="mb-6 text-sm text-muted">Discovery call done and paid. Capture her goals while they're fresh, then send everything in one step. Intake and blood draw happen at the same time.</p>
 
@@ -127,8 +127,8 @@ export default function Onboard() {
 
       <div className="sticky bottom-0 z-30 -mx-6 mt-6 border-t border-line bg-paper/95 px-6 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
-          <span className="text-sm text-muted">{ok ? 'Ready to send.' : `To send: ${missing}.`}</span>
-          <Button size="lg" disabled={!ok} onClick={submit} title={ok ? undefined : missing}>Send intake and book blood draw</Button>
+          <span id="send-why" className="text-sm text-muted" aria-live="polite">{ok ? 'Ready to send.' : `To send: ${missing}.`}</span>
+          <Button size="lg" disabled={!ok} onClick={submit} aria-describedby="send-why">Send intake and book blood draw</Button>
         </div>
       </div>
     </div>

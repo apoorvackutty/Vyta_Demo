@@ -76,7 +76,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs:
             value === t.id ? 'border-plum-700 text-plum-700' : 'border-transparent text-muted hover:text-plum-900')}
         >
           {t.label}
-          {!!t.badge && <span className="rounded-full bg-terracotta-500 px-1.5 text-[11px] text-paper">{t.badge}</span>}
+          {!!t.badge && <span className="rounded-full bg-terracotta-700 px-1.5 text-xs text-paper">{t.badge}</span>}
         </button>
       ))}
     </div>
@@ -109,11 +109,12 @@ export function Dialog({ open, title, onClose, children, footer }: { open: boole
   );
 }
 
-export function EmptyState({ title, body, action }: { title: string; body?: string; action?: ReactNode }) {
+export function EmptyState({ title, body, action, heading = 'p' }: { title: string; body?: string; action?: ReactNode; heading?: 'h1' | 'h2' | 'p' }) {
+  const H = heading;
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
       <img src="/assets/botanical-clover.png" alt="" className="h-20 w-20 object-contain mix-blend-multiply" />
-      <p className="font-display text-xl text-plum-700">{title}</p>
+      <H className="font-display text-xl text-plum-700">{title}</H>
       {body && <p className="max-w-sm text-sm text-muted">{body}</p>}
       {action}
     </div>

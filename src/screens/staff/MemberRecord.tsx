@@ -63,7 +63,7 @@ export default function MemberRecord() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
-      <button onClick={() => nav(-1)} className="mb-3 flex items-center gap-1 text-sm text-muted hover:text-plum-900"><ArrowLeft size={16} /> Back</button>
+      <button onClick={() => nav(-1)} className="mb-3 flex min-h-[28px] items-center gap-1 text-sm text-muted hover:text-plum-900"><ArrowLeft size={16} /> Back</button>
       <Card className="mb-5 p-5">
         <div className="flex flex-wrap items-start gap-4">
           <Avatar name={m.name} size={52} />
@@ -306,7 +306,7 @@ export default function MemberRecord() {
                               <td className="py-1.5 text-plum-900">{r.marker}</td>
                               <td className="tabular-nums text-plum-900">{fmtValue(r)}</td>
                               <td className="text-right"><BandChip band={r.band} /></td>
-                              <td className="w-16 text-right"><button onClick={() => setSource(r)} className="inline-flex items-center gap-1 text-xs text-terracotta-700 underline-offset-2 hover:underline" aria-label={`Source for ${r.marker}`}><FileText size={12} /> Source</button></td>
+                              <td className="w-16 text-right"><button onClick={() => setSource(r)} className="inline-flex min-h-[28px] items-center gap-1 rounded px-1 text-xs text-terracotta-700 underline-offset-2 hover:underline" aria-label={`Source for ${r.marker}`}><FileText size={12} /> Source</button></td>
                             </tr>
                           ))}
                         </tbody>

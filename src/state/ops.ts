@@ -148,6 +148,13 @@ export function confirmVisit(d: DemoData, visitId: string, byId: string) {
   notify(d, v.memberId, `Your blood draw is confirmed for ${fmtDateTime(v.at)}. Remember to fast for 12 hours.`);
 }
 
+// Simulated: the real app would hand her phone an .ics file (TRD §4).
+export function addToCalendar(d: DemoData, visitId: string) {
+  const v = d.visits.find((x) => x.id === visitId);
+  if (!v) return;
+  log(d, v.memberId, 'member', 'calendar', `Added the blood draw on ${fmtDateTime(v.at)} to her calendar`);
+}
+
 export function markDrawn(d: DemoData, visitId: string, byId: string) {
   const v = d.visits.find((x) => x.id === visitId);
   if (!v) return;

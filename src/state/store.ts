@@ -5,7 +5,9 @@ import type { DemoData } from './ops';
 import * as ops from './ops';
 import { buildScenario, type ScenarioId } from './scenarios';
 
-interface Toast { id: number; text: string; key?: string }
+interface Toast { id: number; text: string; key?: string; undo?: () => void }
+// Who to credit in the timeline when an action is undone.
+export interface UndoFor { memberId: string; by: string }
 
 interface DemoStore extends DemoData {
   scenario: ScenarioId;
@@ -23,8 +25,11 @@ interface DemoStore extends DemoData {
   loadScenario: (id: ScenarioId) => void;
   reset: () => void;
   // `key` merges rapid actions of one kind (e.g. plan edits) into a single updating toast.
-  run: (fn: (d: DemoData) => void, toast?: string, key?: string) => void;
-  toast: (text: string, key?: string) => void;
+  // `undo` makes the toast offer Undo (BRAND_UI: "Undo where safe"). Never pass it for gates, sends or signatures.
+  run: (fn: (d: DemoData) => void, toast?: string, key?: string, undo?: UndoFor) => void;
+  toast: (text: string, key?: string, undo?: () => void) => void;
+  holdToast: (id: number) => void;
+  releaseToast: (id: number) => void;
   dismissToast: (id: number) => void;
   markNoticesRead: (memberId: string) => void;
 }
@@ -36,6 +41,9 @@ const pickData = (s: DemoData): DemoData => {
   return structuredClone(out) as unknown as DemoData;
 };
 let toastSeq = 0;
+const timers = new Map<number, ReturnType<typeof setTimeout>>();
+const TOAST_MS = 4000;
+const UNDO_TOAST_MS = 7000;
 
 export const useDemo = create<DemoStore>()(
   persist(
@@ -55,18 +63,36 @@ export const useDemo = create<DemoStore>()(
       setSplit: (split) => set({ split }),
       loadScenario: (id) => set({ ...buildScenario(id), scenario: id, toasts: [] }),
       reset: () => set({ ...buildScenario('day0'), scenario: 'day0', role: 'guide', split: false, toasts: [], staffSignedIn: false, memberSignedIn: false }),
-      run: (fn, toast, key) => {
+      run: (fn, toast, key, undo) => {
+        const before = undo ? pickData(get()) : null;
         const draft = pickData(get());
         fn(draft);
         set(draft);
-        if (toast) get().toast(toast, key);
+        if (!toast) return;
+        get().toast(toast, key, before && undo ? () => {
+          // Restore the data but keep the timeline as it is: the audit trail shows it was done and then undone.
+          set({ ...before, timeline: get().timeline, seq: get().seq });
+          get().run((d) => ops.log(d, undo.memberId, undo.by, 'undo', `Undone: ${toast}`), 'Undone');
+        } : undefined);
       },
-      toast: (text, key) => {
+      toast: (text, key, undo) => {
         const id = ++toastSeq;
-        set((s) => ({ toasts: [...s.toasts.filter((t) => !key || t.key !== key), { id, text, key }] }));
-        setTimeout(() => get().dismissToast(id), 3200);
+        set((s) => {
+          const replaced = s.toasts.filter((t) => key && t.key === key);
+          replaced.forEach((t) => { clearTimeout(timers.get(t.id)); timers.delete(t.id); });
+          return { toasts: [...s.toasts.filter((t) => !replaced.includes(t)), { id, text, key, undo }] };
+        });
+        get().releaseToast(id);
       },
-      dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+      // Toasts pause while hovered or focused, so slower readers and keyboard users can act on them.
+      holdToast: (id) => { clearTimeout(timers.get(id)); timers.delete(id); },
+      releaseToast: (id) => {
+        const t = get().toasts.find((x) => x.id === id);
+        if (!t) return;
+        clearTimeout(timers.get(id));
+        timers.set(id, setTimeout(() => get().dismissToast(id), t.undo ? UNDO_TOAST_MS : TOAST_MS));
+      },
+      dismissToast: (id) => { clearTimeout(timers.get(id)); timers.delete(id); set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })); },
       markNoticesRead: (memberId) => get().run((d) => { d.notices.forEach((n) => { if (n.memberId === memberId) n.read = true; }); }),
     }),
     {

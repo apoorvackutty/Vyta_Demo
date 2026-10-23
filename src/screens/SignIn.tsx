@@ -21,7 +21,7 @@ export function StaffSignIn() {
     toast(`Signed in as ${name}`);
   };
   return (
-    <div className="flex min-h-[calc(100vh-44px)] items-center justify-center bg-cream-100 px-4 py-10">
+    <main id="main-content" tabIndex={-1} className="flex min-h-[calc(100vh-44px)] items-center justify-center bg-cream-100 px-4 py-10 focus:outline-none">
       <div className="grid w-full max-w-4xl overflow-hidden rounded-card border border-line bg-paper shadow-card md:grid-cols-5">
         <div className="relative hidden flex-col justify-between bg-plum-800 p-8 text-cream-100 md:col-span-2 md:flex">
           <img src="/assets/logo-lotus-wordmark.png" alt="Vyta MenoClinic" className="h-20 w-auto self-start invert" />
@@ -52,7 +52,7 @@ export function StaffSignIn() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -101,7 +101,7 @@ export function MemberSignIn({ name }: { name: string }) {
           className={clsx(inputCls, 'h-14 text-center text-[22px] tracking-[0.5em] tabular-nums', error && 'border-danger-fg')} />
         {error
           ? <p id="otp-error" role="alert" className="text-[13px] text-danger-fg">{error}</p>
-          : !code && <p id="otp-hint" className="flex min-h-[44px] items-center gap-1 text-[13px] text-muted">Press Tab or <button type="button" className="font-medium text-terracotta-700 underline underline-offset-2" onClick={() => setCode(DEMO_CODE)}>tap here</button> to use the code from the text</p>}
+          : !code && <p id="otp-hint" className="flex min-h-[44px] items-center gap-1 text-[13px] text-muted">Press Tab or <button type="button" className="inline-flex min-h-[44px] items-center font-medium text-terracotta-700 underline underline-offset-2" onClick={() => setCode(DEMO_CODE)}>tap here</button> to use the code from the text</p>}
         <Button size="lg" type="submit" className="w-full">Sign in</Button>
       </form>
       <button onClick={() => { setCode(''); setError(''); toast('New code sent'); }} className="mt-4 min-h-[44px] self-center text-[14px] font-medium text-terracotta-700 underline underline-offset-2">Send a new code</button>

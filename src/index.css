@@ -5,3 +5,13 @@
 html, body, #root { height: 100%; }
 body { @apply bg-cream-100 font-sans text-plum-900 antialiased; }
 :focus-visible { outline: 2px solid #C3735A; outline-offset: 2px; }
+
+/* Respect "reduce motion" (WCAG 2.3.3): spinners stop, transitions and smooth scrolling become instant. */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

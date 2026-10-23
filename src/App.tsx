@@ -39,7 +39,7 @@ function Stage() {
   const { role, split, staffSignedIn } = useDemo();
   if (role === 'member') {
     return (
-      <div className="flex min-h-[calc(100vh-44px)] items-start justify-center bg-cream-100 py-8">
+      <div id="main-content" tabIndex={-1} className="flex min-h-[calc(100vh-44px)] items-start justify-center bg-cream-100 py-8 focus:outline-none">
         <ErrorBoundary><PhoneFrame><MemberApp /></PhoneFrame></ErrorBoundary>
       </div>
     );
@@ -74,12 +74,32 @@ function DraftBuilder() {
   return null;
 }
 
+// Full-screen member app for a real phone (TRD §5: 360–430 px, no demo chrome).
+function MemberFullScreen() {
+  return (
+    <div id="main-content" tabIndex={-1} className="mx-auto h-[100dvh] max-w-[430px] bg-cream-200 focus:outline-none sm:border-x sm:border-line">
+      <ErrorBoundary><MemberApp /></ErrorBoundary>
+    </div>
+  );
+}
+
+function Shell() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith('/member')) return <MemberFullScreen />;
+  return (
+    <>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-2 focus:z-[60] focus:rounded-lg focus:bg-paper focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-plum-700 focus:shadow-card">Skip to content</a>
+      <DemoBar />
+      <Stage />
+    </>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <DemoBar />
       <DraftBuilder />
-      <Stage />
+      <Shell />
       <Toasts />
     </BrowserRouter>
   );

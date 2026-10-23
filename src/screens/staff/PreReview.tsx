@@ -35,7 +35,7 @@ export default function PreReview() {
   if (!m) return <EmptyState title="Member not found" action={<Link className="text-terracotta-700 underline" to={`/staff/${role}/today`}>Back to Today</Link>} />;
 
   const back = (
-    <Link to={`/staff/${role}/member/${m.id}`} className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-plum-900"><ArrowLeft size={16} /> {m.name}'s record</Link>
+    <Link to={`/staff/${role}/member/${m.id}`} className="mb-3 inline-flex min-h-[28px] items-center gap-1 text-sm text-muted hover:text-plum-900"><ArrowLeft size={16} /> {m.name}'s record</Link>
   );
   if (!report) {
     return (
@@ -166,7 +166,7 @@ function Findings({ report, results, canEdit }: { report: Report; results: Resul
                 <td className="px-4 py-2 text-plum-900">{r.marker}</td>
                 <td className="py-2 tabular-nums text-plum-900">{fmtValue(r)}</td>
                 <td className="py-2"><BandChip band={r.band} /></td>
-                <td className="py-2 pr-4 text-right"><button className="text-xs text-terracotta-700 underline-offset-2 hover:underline" onClick={() => setSource(r)}>Source</button></td>
+                <td className="py-2 pr-4 text-right"><button className="inline-flex min-h-[28px] items-center rounded px-1 text-xs text-terracotta-700 underline-offset-2 hover:underline" onClick={() => setSource(r)} aria-label={`Source for ${r.marker}`}>Source</button></td>
               </tr>
             ))}
           </tbody>
@@ -181,6 +181,7 @@ function FindingRow({ finding: f, result: r, reportId, canEdit, onSource }: { fi
   const { run } = useDemo();
   const role = useStaffRole();
   const by = STAFF_BY_ROLE[role];
+  const undo = { memberId: r.memberId, by };
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState(f.note ?? '');
   return (
@@ -190,7 +191,7 @@ function FindingRow({ finding: f, result: r, reportId, canEdit, onSource }: { fi
         <span className="font-semibold tabular-nums text-plum-900">{fmtValue(r)}</span>
         <BandChip band={r.band} />
         <span className="text-xs text-muted">Target {r.target}</span>
-        <button onClick={onSource} className="ml-auto inline-flex items-center gap-1 text-xs text-terracotta-700 underline-offset-2 hover:underline"><FileText size={13} /> Source</button>
+        <button onClick={onSource} className="-my-1 ml-auto inline-flex min-h-[28px] items-center gap-1 rounded px-1 text-xs text-terracotta-700 underline-offset-2 hover:underline"><FileText size={13} /> Source</button>
       </div>
       <p className="mt-0.5 text-sm text-muted">{f.summary}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -198,7 +199,7 @@ function FindingRow({ finding: f, result: r, reportId, canEdit, onSource }: { fi
           {DECISIONS.map((d, i) => (
             <button
               key={d.id} aria-pressed={f.decision === d.id} disabled={!canEdit}
-              onClick={() => run((x) => ops.decideFinding(x, reportId, f.id, d.id, by), `${r.marker}: ${d.label}`, 'n2-finding')}
+              onClick={() => run((x) => ops.decideFinding(x, reportId, f.id, d.id, by), `${r.marker}: ${d.label}`, 'n2-finding', undo)}
               className={clsx('h-8 px-3 text-[13px] font-medium focus-visible:relative focus-visible:outline focus-visible:outline-2 focus-visible:outline-terracotta-500 disabled:cursor-not-allowed',
                 i > 0 && 'border-l border-plum-700',
                 f.decision === d.id ? 'bg-plum-700 text-paper' : 'bg-paper text-plum-700 enabled:hover:bg-plum-100')}
@@ -213,7 +214,7 @@ function FindingRow({ finding: f, result: r, reportId, canEdit, onSource }: { fi
       </div>
       {f.note && !noteOpen && <p className="mt-2 rounded-md bg-plum-100 px-3 py-1.5 text-sm text-plum-900">Note: {f.note}</p>}
       {noteOpen && (
-        <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); run((x) => ops.noteFinding(x, reportId, f.id, note, by), note.trim() ? `Note saved on ${r.marker}` : `Note removed from ${r.marker}`); setNoteOpen(false); }}>
+        <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); run((x) => ops.noteFinding(x, reportId, f.id, note, by), note.trim() ? `Note saved on ${r.marker}` : `Note removed from ${r.marker}`, undefined, undo); setNoteOpen(false); }}>
           <label className="sr-only" htmlFor={`note-${f.id}`}>Note on {r.marker}</label>
           <input id={`note-${f.id}`} autoFocus className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. recheck in 8 weeks" />
           <Button size="md" type="submit">Save</Button>
@@ -254,6 +255,7 @@ function PlanItemRow({ item, reportId, canEdit }: { item: PlanItem; reportId: st
   const { run } = useDemo();
   const role = useStaffRole();
   const by = STAFF_BY_ROLE[role];
+  const undo = { memberId: useDemo((st) => st.reports.find((x) => x.id === reportId)?.memberId ?? ''), by };
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState(item.sideNote ?? '');
   const [editing, setEditing] = useState(false);
@@ -286,14 +288,14 @@ function PlanItemRow({ item, reportId, canEdit }: { item: PlanItem; reportId: st
           {fields.map((f) => (
             <PlanSelect key={f} label={isLifestyle(item.group) ? 'Target' : FIELD_LABEL[f]} value={item[f]} options={item.options?.[f]}
               missing={gaps.includes(f)} disabled={!editable} id={`${item.id}-${f}`}
-              onChange={(v) => run((x) => ops.editPlanItem(x, reportId, item.id, f, v, by), `${item.name}: ${FIELD_LABEL[f].toLowerCase()} set to ${v}`, 'n2-plan')} />
+              onChange={(v) => run((x) => ops.editPlanItem(x, reportId, item.id, f, v, by), `${item.name}: ${FIELD_LABEL[f].toLowerCase()} set to ${v}`, 'n2-plan', undo)} />
           ))}
         </div>
       )}
       <p className="mt-1.5 text-xs text-muted">For her: {item.purpose}</p>
       {item.sideNote && !noteOpen && <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-plum-100 px-2.5 py-1 text-sm text-plum-900"><StickyNote size={13} aria-hidden="true" /> {item.sideNote}</p>}
       {noteOpen && (
-        <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); run((x) => ops.setSideNote(x, reportId, item.id, note, by), note.trim() ? `${item.name}: side note saved` : `${item.name}: side note removed`); setNoteOpen(false); }}>
+        <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); run((x) => ops.setSideNote(x, reportId, item.id, note, by), note.trim() ? `${item.name}: side note saved` : `${item.name}: side note removed`, undefined, undo); setNoteOpen(false); }}>
           <label className="sr-only" htmlFor={`side-${item.id}`}>Side note for {item.name}</label>
           <input id={`side-${item.id}`} autoFocus className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. allergy: cottonseed oil" />
           <Button type="submit">Save</Button>
@@ -302,18 +304,17 @@ function PlanItemRow({ item, reportId, canEdit }: { item: PlanItem; reportId: st
       {canEdit && (open || item.removed) && (
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {flagged && (
-            <Button size="sm" variant="secondary" disabled={gaps.length > 0}
-              title={gaps.length ? `Fill in the ${gaps.map((g) => FIELD_LABEL[g].toLowerCase()).join(' and ')} first` : undefined}
-              onClick={() => run((x) => ops.reviewPlanItem(x, reportId, item.id, by), `${item.name}: reviewed`)}>
+            <Button size="sm" variant="secondary" disabled={gaps.length > 0} aria-describedby={gaps.length ? `${item.id}-why` : undefined}
+              onClick={() => run((x) => ops.reviewPlanItem(x, reportId, item.id, by), `${item.name}: reviewed`, undefined, undo)}>
               <Check size={14} /> {item.flag === 'proposed' ? 'Keep proposed step' : 'Mark reviewed'}
             </Button>
           )}
-          {flagged && gaps.length > 0 && <span className="text-xs text-watch-fg">Fill in the {gaps.map((g) => FIELD_LABEL[g].toLowerCase()).join(' and ')} first</span>}
+          {flagged && gaps.length > 0 && <span id={`${item.id}-why`} className="text-xs text-watch-fg">Fill in the {gaps.map((g) => FIELD_LABEL[g].toLowerCase()).join(' and ')} first</span>}
           {editing && !flagged && <Button size="sm" variant="secondary" onClick={() => { setEditing(false); setNoteOpen(false); }}><Check size={14} /> Done</Button>}
           {!item.removed && <Button size="sm" variant="ghost" onClick={() => setNoteOpen((o) => !o)}><StickyNote size={14} /> {item.sideNote ? 'Edit side note' : 'Side note'}</Button>}
           {item.removed
-            ? <Button size="sm" variant="ghost" onClick={() => { setEditing(false); run((x) => ops.removePlanItem(x, reportId, item.id, false, by), `${item.name} restored`); }}><RotateCcw size={14} /> Restore</Button>
-            : <Button size="sm" variant="danger" className="ml-auto" onClick={() => run((x) => ops.removePlanItem(x, reportId, item.id, true, by), `${item.name} removed from the plan`)}><Trash2 size={14} /> Remove</Button>}
+            ? <Button size="sm" variant="ghost" onClick={() => { setEditing(false); run((x) => ops.removePlanItem(x, reportId, item.id, false, by), `${item.name} restored`, undefined, undo); }}><RotateCcw size={14} /> Restore</Button>
+            : <Button size="sm" variant="danger" className="ml-auto" onClick={() => run((x) => ops.removePlanItem(x, reportId, item.id, true, by), `${item.name} removed from the plan`, undefined, undo)}><Trash2 size={14} /> Remove</Button>}
         </div>
       )}
     </li>
@@ -329,7 +330,7 @@ function PlanSelect({ id, label, value, options = [], missing, disabled, onChang
   const opts = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <div className="flex flex-col gap-0.5">
-      <label htmlFor={id} className={clsx('text-[11px] font-medium', missing ? 'text-watch-fg' : 'text-muted')}>{label}{missing ? ' · missing' : ''}</label>
+      <label htmlFor={id} className={clsx('text-xs font-medium', missing ? 'text-watch-fg' : 'text-muted')}>{label}{missing ? ' · missing' : ''}</label>
       {other ? (
         <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); if (text.trim()) { onChange(text.trim()); setOther(false); setText(''); } }}>
           <input id={id} autoFocus className={clsx(inputCls, 'h-8 w-36 py-1')} value={text} onChange={(e) => setText(e.target.value)} placeholder={`Custom ${label.toLowerCase()}`}
@@ -390,7 +391,7 @@ function GateFooter({ report, results, canEdit, memberName }: { report: Report; 
           <ProgressBar value={check.itemsResolved / Math.max(1, check.itemsTotal)} label="Plan items resolved" />
         </div>
         {canEdit && suggestable > 0 && (
-          <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.acceptSuggestions(d, report.id, by), `Protocol suggestions accepted for ${suggestable} findings`)}>
+          <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.acceptSuggestions(d, report.id, by), `Protocol suggestions accepted for ${suggestable} findings`, undefined, { memberId: report.memberId, by })}>
             Accept protocol suggestions ({suggestable} left)
           </Button>
         )}
