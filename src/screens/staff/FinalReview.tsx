@@ -202,7 +202,7 @@ function StationSection({ index, label, status, rows, canEdit }: { index: number
       </div>
       {status === 'skipped' && <p className="border-t border-line px-4 py-2.5 text-sm text-plum-900">{rows.find((r) => r.skipped)?.skipped?.reason}. Left out of her scores, not counted as zero.</p>}
       {status === 'done' && shown.length > 0 && (
-        <div className="overflow-x-auto border-t border-line">
+        <div className="relative overflow-x-auto border-t border-line">
           <table className="w-full min-w-[520px] text-sm">
             <caption className="sr-only">{label} results</caption>
             <thead className="sr-only"><tr><th>Marker</th><th>Value</th><th>Status</th><th>Source</th><th>Actions</th></tr></thead>

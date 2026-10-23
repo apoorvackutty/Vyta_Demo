@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutList, Users, RotateCcw, Columns2, LogOut, Search, X, SlidersHorizontal } from 'lucide-react';
+import { LayoutList, Users, Package, RotateCcw, Columns2, LogOut, Search, X, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Role, StaffRole } from '../types';
 import { useDemo } from '../state/store';
@@ -131,6 +131,7 @@ export function StaffShell({ children }: { children: ReactNode }) {
         <nav aria-label="Main" className="flex flex-col gap-1">
           <NavLink to={`/staff/${role}/today`} className={link}><LayoutList size={18} className="shrink-0" /> <span className={label}>Today</span></NavLink>
           <NavLink to={`/staff/${role}/members`} className={link}><Users size={18} className="shrink-0" /> <span className={label}>Members</span></NavLink>
+          {['np', 'ma', 'admin'].includes(role) && <NavLink to={`/staff/${role}/orders`} className={link}><Package size={18} className="shrink-0" /> <span className={label}>Orders</span></NavLink>}
         </nav>
         <div className="mt-auto rounded-lg bg-paper/5 p-2">
           <div className="flex items-center gap-2">
@@ -146,6 +147,7 @@ export function StaffShell({ children }: { children: ReactNode }) {
           <nav aria-label="Main" className="flex gap-1 md:hidden">
             <NavLink to={`/staff/${role}/today`} className={topLink}><LayoutList size={16} aria-hidden="true" /> Today</NavLink>
             <NavLink to={`/staff/${role}/members`} className={topLink}><Users size={16} aria-hidden="true" /> Members</NavLink>
+            {['np', 'ma', 'admin'].includes(role) && <NavLink to={`/staff/${role}/orders`} className={topLink}><Package size={16} aria-hidden="true" /> Orders</NavLink>}
           </nav>
           <button onClick={signOutNow} className="ml-auto flex min-h-[40px] items-center gap-1.5 rounded-lg px-3 text-sm text-plum-700 hover:bg-plum-100 md:hidden"><LogOut size={16} aria-hidden="true" /> Sign out</button>
           <div className="w-full md:w-auto md:max-w-sm md:flex-1"><MemberSearch role={role} /></div>

@@ -1,6 +1,6 @@
 # Build Plan and Demo Script
 
-**Status (23 Oct):** Steps 0–1 and tasks 10–20 are done (through N3 Final review; scenarios 3b and 4b added as jump points) on branch `vyta-day-flow`. Continue from task 21 (M7 Your Vyta Day agenda). Scenarios 5–7 are stubbed in `src/state/scenarios.ts`.
+**Status (23 Oct):** Steps 0–1 and tasks 10–25 are done on branch `vyta-day-flow` (through M10 SAGE → G6 → N7). Demo-script steps 1–12 are playable; jump points 3b, 4b and 4c were added, and scenarios 5 and 6 are wired. Continue from task 26 (S3i SAGE tab: a basic chat view is already in; G8 messages). Scenario 7 is stubbed in `src/state/scenarios.ts`.
 
 Rule from Tab's two discarded builds: **one screen or one feature per prompt, in order.** Don't ask Claude Code to "build the app". Finish a step, click through it, commit, then move on.
 

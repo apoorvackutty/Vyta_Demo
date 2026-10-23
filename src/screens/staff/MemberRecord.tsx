@@ -16,6 +16,8 @@ import { SourceDialog, SourceLabel, fmtValue, sectionSummary } from '../../compo
 import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
 import type { IntakeValue, Result, StaffRole, Visit } from '../../types';
 import NotFound from './NotFound';
+import { OrdersList } from '../../components/orders';
+import { SageThread } from '../../components/sage';
 import { can, actingAs, isSuperAdmin } from '../../state/permissions';
 import { ActingNote } from '../../components/domain';
 
@@ -87,7 +89,7 @@ export default function MemberRecord() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="font-display text-[32px] font-semibold leading-none text-plum-700">{m.name}</h1>
-              {flags.length > 0 && <Chip tone="danger">Safety flag</Chip>}
+              {flags.length > 0 && <Link to={`/staff/${role}/flag/${flags[0].id}`} className="rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-terracotta-500"><Chip tone="danger">Safety flag · {flags[0].status === 'escalated' ? 'escalated' : 'open'}</Chip></Link>}
             </div>
             <p className="mt-1 text-sm text-muted">{ageYears(m.dob, s.now)} · {MENO_LABEL[m.menoStatus]} · {PROGRAM_LABEL[m.program]} program · Guide {staffName(m.guideId)} · NP {staffName(m.npId)}</p>
           </div>
@@ -314,11 +316,11 @@ export default function MemberRecord() {
         )}
 
         {tab === 'orders' && (
-          <Card className="p-5"><EmptyState title="No orders yet" body="Orders are created from her plan when the NP releases it, and stay red until they're placed." /></Card>
+          <Card className="p-5"><OrdersList memberId={m.id} /></Card>
         )}
 
         {tab === 'sage' && (
-          <Card className="p-5"><EmptyState title="No SAGE conversations yet" body="Once her report is released she can ask SAGE about it. Anything SAGE flags is highlighted here." /></Card>
+          <Card className="p-5"><SageThread memberId={m.id} name={m.name} /></Card>
         )}
 
         {tab === 'results' && (

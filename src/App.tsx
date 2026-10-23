@@ -13,6 +13,10 @@ import PreReview from './screens/staff/PreReview';
 import VisitStations from './screens/staff/VisitStations';
 import WordingReview from './screens/staff/WordingReview';
 import FinalReview from './screens/staff/FinalReview';
+import Present from './screens/staff/Present';
+import Release from './screens/staff/Release';
+import Orders from './screens/staff/Orders';
+import FlagView from './screens/staff/FlagView';
 import NotFound from './screens/staff/NotFound';
 import { StaffSignIn } from './screens/SignIn';
 import MemberApp from './screens/member/MemberApp';
@@ -34,6 +38,11 @@ function StaffRoutes() {
           <Route path="/staff/:role/visit/:visitId" element={<VisitStations />} />
           <Route path="/staff/:role/wording/:id" element={<WordingReview />} />
           <Route path="/staff/:role/final/:id" element={<FinalReview />} />
+          <Route path="/staff/:role/present/:id" element={<Present />} />
+          <Route path="/staff/:role/release/:id" element={<Release />} />
+          <Route path="/staff/:role/orders" element={<Orders />} />
+          <Route path="/staff/:role/flag/:flagId" element={<FlagView />} />
+          <Route path="/staff/:role/escalation/:flagId" element={<FlagView />} />
           <Route path="/" element={<Navigate to={`/staff/${urlRole}/today`} replace />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
