@@ -370,14 +370,52 @@ export function startVisit(d: DemoData, visitId: string, byId: string): boolean 
   return true;
 }
 
-// Simulated upload (TRD §4): fills the station with the seeded values. The station is done and sent to the NP.
-export function uploadStation(d: DemoData, visitId: string, station: Exclude<Station, 'functional'>, byId: string) {
+// Check before apply: the MA reviews the parsed scan, may correct values, then applies them.
+// Values she corrected in the review list are kept as "edited" (and count as checked); the rest are
+// "From scan · check" until she confirms them. `reviewed` maps marker → value from the review list.
+export type Reviewed = Record<string, number | string>;
+export function applyUpload(d: DemoData, visitId: string, station: Exclude<Station, 'functional'>, reviewed: Reviewed, byId: string) {
   const v = visitOf(d, visitId);
   if (!v || v.completeness === 'passed') return;
-  const rows = uploadResults(v.memberId, v.id, station);
-  d.results = d.results.filter((r) => !(r.visitId === v.id && r.panel === stationOf(station).panel)).concat(rows);
+  const panel = stationOf(station).panel;
+  const again = d.results.some((r) => r.visitId === v.id && r.panel === panel && !r.skipped);
+  const rows = uploadResults(v.memberId, v.id, station).map((r) => {
+    const val = reviewed[r.marker];
+    if (val === undefined || val === r.value) return r;
+    return { ...r, value: val, band: bandFor(station, r.marker, val), origin: 'scan_edited' as const, checked: true };
+  });
+  d.results = d.results.filter((r) => !(r.visitId === v.id && r.panel === panel)).concat(rows);
   v.stations![station] = 'done';
-  log(d, v.memberId, byId, 'station_done', `${stationLabel(station)} report uploaded: ${rows.length} values. Sent to the NP`);
+  const edited = rows.filter((r) => r.origin === 'scan_edited').length;
+  log(d, v.memberId, byId, 'station_done', `${stationLabel(station)} ${again ? 're-uploaded scan' : 'scan'} applied: ${rows.length} values${edited ? `, ${edited} corrected before applying` : ''}. ${rows.length - edited} to check against the printout. Sent to the NP`);
+}
+// Apply exactly as read (tests and demo shortcuts).
+export const uploadStation = (d: DemoData, visitId: string, station: Exclude<Station, 'functional'>, byId: string) => applyUpload(d, visitId, station, {}, byId);
+
+export function reuploadStation(d: DemoData, visitId: string, station: Exclude<Station, 'functional'>, byId: string) {
+  const v = visitOf(d, visitId);
+  if (!v || v.completeness === 'passed') return;
+  log(d, v.memberId, byId, 'station_reupload', `${stationLabel(station)} re-upload started: the values on her record stay until the new scan is applied`);
+}
+
+export function clearStation(d: DemoData, visitId: string, station: Station, byId: string) {
+  const v = visitOf(d, visitId);
+  if (!v || v.completeness === 'passed') return;
+  const panel = stationOf(station).panel;
+  const n = d.results.filter((r) => r.visitId === v.id && r.panel === panel && !r.skipped).length;
+  if (!n) return;
+  d.results = d.results.filter((r) => !(r.visitId === v.id && r.panel === panel));
+  v.stations![station] = 'in_progress';
+  log(d, v.memberId, byId, 'station_cleared', `${stationLabel(station)} cleared: ${n} values removed`);
+}
+
+export function markStationChecked(d: DemoData, visitId: string, station: Station, byId: string) {
+  const v = visitOf(d, visitId);
+  if (!v || v.completeness === 'passed') return;
+  const open = d.results.filter((r) => r.visitId === v.id && r.panel === stationOf(station).panel && r.origin === 'scan' && !r.checked);
+  if (!open.length) return;
+  open.forEach((r) => { r.checked = true; });
+  log(d, v.memberId, byId, 'station_checked', `${stationLabel(station)}: ${open.length} scan values checked against the printout`);
 }
 
 export function editStationResult(d: DemoData, resultIdArg: string, value: number | string | null, byId: string) {
@@ -388,6 +426,9 @@ export function editStationResult(d: DemoData, resultIdArg: string, value: numbe
   const before = r.value;
   r.value = value;
   r.band = bandFor(st.id, r.marker, value);
+  // Editing a scan value confirms it. Typing back the scan's own value makes it plain "From scan" again.
+  if (r.origin === 'scan' || r.origin === 'scan_edited') r.origin = value === r.scanValue ? 'scan' : 'scan_edited';
+  r.checked = true;
   log(d, r.memberId, byId, 'result_edit', `${st.label} · ${r.marker}: ${before ?? '—'} → ${value ?? '—'}${r.unit ? ` ${r.unit}` : ''}`);
 }
 
@@ -407,6 +448,7 @@ export function saveFunctional(d: DemoData, visitId: string, entry: FunctionalEn
     id: resultId(v.id, 'functional', t.marker), memberId: v.memberId, visitId: v.id, panel: 'Functional', marker: t.marker,
     value: entry[t.id]!, unit: t.unit, target: t.scored ? `${t.rule} (illustrative)` : 'Recorded, not scored',
     band: functionalBand(t.id, entry[t.id]) ?? 'not_scored', source: stationOf('functional').source,
+    section: t.section, origin: 'entered' as const, checked: true,
   }));
   const again = v.stations!.functional === 'done';
   d.results = d.results.filter((r) => !(r.visitId === v.id && r.panel === 'Functional')).concat(rows);
@@ -439,7 +481,7 @@ export function unskipStation(d: DemoData, visitId: string, station: Station, by
 
 export function passCompleteness(d: DemoData, visitId: string, byId: string): boolean {
   const v = visitOf(d, visitId);
-  if (!v || !canPassCompleteness(v).ok) return false;
+  if (!v || !canPassCompleteness(v, d.results).ok) return false;
   v.completeness = 'passed';
   v.status = 'done';
   const skipped = STATIONS.filter((s) => v.stations![s.id] === 'skipped').map((s) => s.label);

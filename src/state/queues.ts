@@ -98,7 +98,7 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
             : { label: 'Open', action: { type: 'open_record', memberId: m.id } },
         });
       }
-      if (v.completeness !== 'passed' && canPassCompleteness(v).ok) items.push({
+      if (v.completeness !== 'passed' && canPassCompleteness(v, d.results).ok) items.push({
         key: `completeness-${v.id}`, memberId: m.id, category: 'visits', roles: ['ma', 'np'],
         label: 'Completeness check', reason: 'Every test is in or skipped with a reason · owner: MA or NP (to confirm)', ageLabel: '—', priority: 1,
         primary: { label: 'Open visit', action: { type: 'start_visit', visitId: v.id } },

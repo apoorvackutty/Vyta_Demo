@@ -8,8 +8,9 @@ import { useStaffRole } from '../../components/shell';
 import { BandChip, ActingNote } from '../../components/domain';
 import { can, actingAs } from '../../state/permissions';
 import { Button, Card, Chip, Dialog, EmptyState, Field, inputCls, type Tone } from '../../components/ui';
-import { canPassCompleteness } from '../../state/guards';
-import { STATIONS, stationOf, SKIP_REASONS, UPLOADS, FUNCTIONAL, functionalBand, type FunctionalId } from '../../data/stations';
+import { canPassCompleteness, stationCount } from '../../state/guards';
+import { SourceLabel, sectionSummary } from '../../components/results';
+import { STATIONS, stationOf, SKIP_REASONS, UPLOADS, SECTIONS, REPORT_NAME, nameMatches, FUNCTIONAL, functionalBand, type FunctionalId } from '../../data/stations';
 import { STAFF, STAFF_BY_ROLE } from '../../data/seed';
 import { scoreByPanel } from '../../lib/scores';
 import { fmtDate, fmtTime } from '../../lib/time';
@@ -66,6 +67,7 @@ export default function VisitStations() {
                     active === x.id ? 'border-plum-700 ring-1 ring-plum-700' : 'border-line hover:border-plum-700')}>
                   <span className="text-sm font-semibold text-plum-900">{i + 1} · {x.label}</span>
                   <StatusChip status={v.stations![x.id]} />
+                  <CountText visit={v} station={x.id} />
                 </button>
               </li>
             ))}
@@ -81,13 +83,13 @@ export default function VisitStations() {
         <Card as="section" className="p-4 sm:p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-base font-semibold text-plum-900">{STATIONS.findIndex((x) => x.id === active) + 1} · {st.label}</h2>
-            <StatusChip status={v.stations![active]} />
+            <span className="flex flex-wrap items-center gap-2"><CountText visit={v} station={active} /><StatusChip status={v.stations![active]} /></span>
           </div>
           {v.stations![active] === 'skipped'
             ? <SkippedNote visit={v} station={active} result={results.find((r) => r.panel === st.panel && r.skipped)} canEdit={canEdit} />
             : active === 'functional'
-              ? <FunctionalStation key={v.id} visit={v} results={results.filter((r) => r.panel === 'Functional')} canEdit={canEdit} />
-              : <UploadStation visit={v} station={active} results={results.filter((r) => r.panel === st.panel)} canEdit={canEdit} />}
+              ? <FunctionalStation key={`${v.id}-${results.some((r) => r.panel === 'Functional') ? 'saved' : 'empty'}`} visit={v} results={results.filter((r) => r.panel === 'Functional')} canEdit={canEdit} />
+              : <UploadStation key={active} memberName={m.name} visit={v} station={active} results={results.filter((r) => r.panel === st.panel)} canEdit={canEdit} />}
         </Card>
       </div>
       <CompletenessFooter visit={v} canEdit={canEdit} />
@@ -95,37 +97,87 @@ export default function VisitStations() {
   );
 }
 
+// "12 of 15 values in", the same count the completeness check uses.
+function CountText({ visit, station }: { visit: Visit; station: Station }) {
+  const results = useDemo((s) => s.results);
+  if (visit.stations![station] === 'skipped') return null;
+  const c = stationCount(visit, results, station);
+  return <span className="text-xs text-muted"><span className="tabular-nums">{c.in} of {c.total}</span> values in{c.toCheck ? ` · ${c.toCheck} to check` : ''}</span>;
+}
+
 function useBy() {
   const role = useStaffRole();
   return STAFF_BY_ROLE[role];
 }
 
-// InBody, ShapeScale and VO2: "Upload" fills the seeded values after 0.8 s (TRD §4); every value stays editable.
-function UploadStation({ visit, station, results, canEdit }: { visit: Visit; station: Exclude<Station, 'functional'>; results: Result[]; canEdit: boolean }) {
+// InBody, ShapeScale and VO2: check before apply. Upload → reading (0.8 s, TRD §4) → review the parsed values,
+// correct any that don't match the printout → Apply to her record. Applied values stay editable.
+function UploadStation({ visit, station, results, canEdit, memberName }: { visit: Visit; station: Exclude<Station, 'functional'>; results: Result[]; canEdit: boolean; memberName: string }) {
   const s = useDemo();
   const by = useBy();
   const st = stationOf(station);
-  const [busy, setBusy] = useState(false);
+  const doc = station === 'vo2' ? 'report' : 'scan';
+  const [phase, setPhase] = useState<'idle' | 'reading' | 'review'>('idle');
+  const [review, setReview] = useState<Record<string, string>>({});
   const [skipping, setSkipping] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(timer.current), []);
-  const upload = () => {
-    setBusy(true);
+  const applied = results.filter((r) => !r.skipped);
+  const count = stationCount(visit, s.results, station);
+  const read = (again: boolean) => {
+    if (again) s.run((d) => ops.reuploadStation(d, visit.id, station, by), `Re-uploading the ${st.label} ${doc} · her current values stay until you apply`);
+    setPhase('reading');
     timer.current = setTimeout(() => {
-      setBusy(false);
-      s.run((d) => ops.uploadStation(d, visit.id, station, by), `${st.label} uploaded · ${UPLOADS[station].length} values sent to the NP`);
+      setReview(Object.fromEntries(UPLOADS[station].map((r) => [r.marker, String(r.value)])));
+      setPhase('review');
     }, 800);
   };
+  const apply = () => {
+    const reviewed: ops.Reviewed = Object.fromEntries(Object.entries(review).map(([k, v]) => [k, Number(v)]));
+    const edited = UPLOADS[station].filter((r) => reviewed[r.marker] !== r.value).length;
+    s.run((d) => ops.applyUpload(d, visit.id, station, reviewed, by),
+      `${st.label} applied · ${UPLOADS[station].length} values${edited ? ` · ${edited} edited` : ''} · sent to the NP`);
+    setPhase('idle');
+  };
 
-  if (!results.length) {
+  if (phase === 'reading') return <p role="status" className="text-sm text-plum-900">Reading the {st.label} {doc}…</p>;
+  if (phase === 'review') {
+    const match = nameMatches(memberName, REPORT_NAME);
+    return (
+      <div>
+        <h3 className="mb-1 text-sm font-semibold text-plum-900">Check before apply</h3>
+        <p className="mb-2 text-[13px] text-muted">These are the values read from the {doc}. Correct any that don't match the printout, then apply them to her record.</p>
+        <p role="status" className={clsx('mb-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium', match ? 'bg-ok-bg text-ok-fg' : 'bg-danger-bg text-danger-fg')}>
+          {match ? <><Check size={14} aria-hidden="true" /> Name on report matches {memberName} ✓</> : <>Name on report ({REPORT_NAME}) does not match {memberName}. Don't apply this {doc}.</>}
+        </p>
+        {SECTIONS[station].map((sec) => (
+          <section key={sec} aria-label={sec} className="mb-3">
+            <h4 className="mb-1 text-[13px] font-medium text-muted">{sec}</h4>
+            <ul className="divide-y divide-line border-y border-line">
+              {UPLOADS[station].filter((r) => r.section === sec).map((r) => (
+                <li key={r.marker} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-sm">
+                  <span className="text-plum-900">{r.marker}</span>
+                  <ReviewInput label={r.marker} unit={r.unit} scan={r.value} value={review[r.marker] ?? ''} onCommit={(x) => setReview((v) => ({ ...v, [r.marker]: x }))} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button className="min-h-[44px]" disabled={!match} onClick={apply}>Apply to her record</Button>
+          <Button className="min-h-[44px]" variant="ghost" onClick={() => setPhase('idle')}>Cancel</Button>
+        </div>
+      </div>
+    );
+  }
+  if (!applied.length) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted">Upload the {st.label} {station === 'vo2' ? 'report' : 'scan'}. The values fill in for you to check, and each one can be corrected.</p>
-        <p role="status" className="text-sm text-plum-900">{busy ? `Reading the ${st.label} ${station === 'vo2' ? 'report' : 'scan'}…` : ''}</p>
+        <p className="text-sm text-muted">Upload the {st.label} {doc}. You check the values it reads before they go on her record.</p>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <Button onClick={upload} disabled={busy} aria-busy={busy}>{busy ? 'Uploading…' : st.upload}</Button>
-            <Button variant="danger" onClick={() => setSkipping(true)} disabled={busy}>Skip with reason</Button>
+            <Button className="min-h-[44px]" onClick={() => read(false)}>{st.upload}</Button>
+            <Button className="min-h-[44px]" variant="danger" onClick={() => setSkipping(true)}>Skip with reason</Button>
           </div>
         )}
         <SkipDialog open={skipping} visit={visit} station={station} onClose={() => setSkipping(false)} />
@@ -134,22 +186,56 @@ function UploadStation({ visit, station, results, canEdit }: { visit: Visit; sta
   }
   return (
     <div>
-      <p className="mb-2 text-[13px] text-muted">Source: {st.source}. Bands use the targets from her report.{canEdit ? ' Change any value that doesn\'t match the printout.' : ''}</p>
-      <table className="w-full text-sm">
-        <thead className="text-left text-[13px] text-muted">
-          <tr><th className="pb-1 font-medium">Measure and target</th><th className="pb-1 font-medium">Value</th><th className="pb-1 text-right font-medium">Band</th></tr>
-        </thead>
-        <tbody>
-          {results.map((r) => (
-            <tr key={r.id} className="border-t border-line align-middle">
-              <td className="py-1.5 pr-2 text-plum-900">{r.marker}<span className="block text-xs text-muted">{r.target ? `Target ${r.target}` : 'No target'}</span></td>
-              <td className="py-1.5 pr-2"><ValueInput result={r} canEdit={canEdit} /></td>
-              <td className="py-1.5 text-right">{r.band === 'not_scored' ? <span className="text-xs text-muted">Not scored</span> : <BandChip band={r.band} />}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <p className="mb-2 text-[13px] text-muted">Source: {st.source}. Bands use the targets from her report.{canEdit ? ' Editing a value confirms it.' : ''}</p>
+      {canEdit && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {count.toCheck > 0 && <Button className="min-h-[44px]" onClick={() => s.run((d) => ops.markStationChecked(d, visit.id, station, by), `${st.label}: ${count.toCheck} values checked`, undefined, { memberId: visit.memberId, by })}>Mark all checked ({count.toCheck})</Button>}
+          <Button className="min-h-[44px]" variant="secondary" onClick={() => read(true)}>Re-upload {doc}</Button>
+          <Button className="min-h-[44px]" variant="danger" onClick={() => s.run((d) => ops.clearStation(d, visit.id, station, by), `${st.label} cleared`, undefined, { memberId: visit.memberId, by })}>Clear</Button>
+        </div>
+      )}
+      {SECTIONS[station].map((sec) => {
+        const rows = applied.filter((r) => r.section === sec);
+        return (
+          <section key={sec} aria-label={sec} className="mb-4">
+            <h3 className="mb-1 text-[13px] font-medium text-plum-900">{sec} <span className="font-normal text-muted">· {sectionSummary(rows)}</span></h3>
+            <table className="w-full text-sm">
+              <thead className="sr-only"><tr><th>Measure and target</th><th>Value and source</th><th>Band</th></tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-t border-line align-top">
+                    <td className="py-1.5 pr-2 text-plum-900">{r.marker}<span className="block text-xs text-muted">{r.target ? `Target ${r.target}` : 'No target'}</span></td>
+                    <td className="py-1.5 pr-2"><ValueInput result={r} canEdit={canEdit} /><span className="mt-1 block"><SourceLabel result={r} /></span></td>
+                    <td className="py-1.5 text-right">{r.band === 'not_scored' ? <span className="text-xs text-muted">Not scored</span> : <BandChip band={r.band} />}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        );
+      })}
     </div>
+  );
+}
+
+// One value in the review list: Enter or leaving the field commits; anything that isn't a number reverts.
+function ReviewInput({ label, unit, scan, value, onCommit }: { label: string; unit?: string; scan: number | string; value: string; onCommit: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const commit = () => {
+    const n = Number(text.trim());
+    if (!text.trim() || !Number.isFinite(n)) { setText(value); return; }
+    onCommit(String(n));
+  };
+  const edited = Number(value) !== scan;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <input aria-label={`${label}${unit ? ` (${unit})` : ''}`} inputMode="decimal" value={text}
+        onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+        className={clsx(inputCls, 'w-24 px-2 py-1 tabular-nums')} />
+      {unit && <span className="text-xs text-muted">{unit}</span>}
+      {edited && <span className="text-xs text-info-fg">Edited · scan read {scan}</span>}
+    </span>
   );
 }
 
@@ -176,7 +262,7 @@ function ValueInput({ result, canEdit }: { result: Result; canEdit: boolean }) {
   );
 }
 
-// Functional tests: typed in by the MA, with a band that appears as she types (illustrative cutoffs).
+// Functional tests: typed in by the MA, in sections, with a band that appears as she types (illustrative cutoffs).
 function FunctionalStation({ visit, results, canEdit }: { visit: Visit; results: Result[]; canEdit: boolean }) {
   const s = useDemo();
   const by = useBy();
@@ -202,38 +288,53 @@ function FunctionalStation({ visit, results, canEdit }: { visit: Visit; results:
       <p className="mb-3 rounded-lg bg-cream-100 px-3 py-2 text-[13px] text-plum-900">
         Bands use <strong>illustrative cutoffs</strong> until the clinic confirms its own. Subjective strength and exercise consistency are recorded but not scored.
       </p>
-      <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
-        {FUNCTIONAL.map((t) => {
-          const band = functionalBand(t.id, entry[t.id]);
-          const fid = `fn-${t.id}`;
-          return (
-            <div key={t.id} className="flex items-end gap-3">
-              <div className="min-w-0 flex-1">
-                <Field label={`${t.label}${t.unit ? ` (${t.unit})` : ''}`} htmlFor={fid} hint={t.scored ? `${t.rule} · illustrative` : t.rule}>
-                  {t.choices ? (
-                    <select id={fid} className={inputCls} value={entry[t.id]} disabled={!canEdit} onChange={(e) => set(t.id, e.target.value)}>
-                      <option value="">Choose…</option>
-                      {t.choices.map((c) => <option key={c}>{c}</option>)}
-                    </select>
-                  ) : (
-                    <input id={fid} inputMode="decimal" className={inputCls} value={entry[t.id]} disabled={!canEdit} onChange={(e) => set(t.id, e.target.value)} />
-                  )}
-                </Field>
-              </div>
-              <span className="mb-6 w-32 shrink-0 text-right" aria-live="polite">
-                {band && band !== 'not_scored' ? <BandChip band={band} /> : band === 'not_scored' ? <span className="text-xs text-muted">Not scored</span>
-                  : entry[t.id].trim() ? <span className="text-xs text-attn-fg">Enter a number</span> : <span className="text-xs text-muted">No band yet</span>}
-              </span>
+      {SECTIONS.functional.map((sec) => {
+        const tests = FUNCTIONAL.filter((t) => t.section === sec);
+        const rows = results.filter((r) => r.section === sec);
+        return (
+          <section key={sec} aria-label={sec} className="mb-4">
+            <h3 className="mb-2 text-[13px] font-medium text-plum-900">{sec}{rows.length > 0 && <span className="font-normal text-muted"> · {sectionSummary(rows)}</span>}</h3>
+            <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+              {tests.map((t) => {
+                const band = functionalBand(t.id, entry[t.id]);
+                const fid = `fn-${t.id}`;
+                const savedRow = results.find((r) => r.marker === t.marker);
+                const unchanged = savedRow && String(savedRow.value) === entry[t.id];
+                return (
+                  <div key={t.id} className="flex items-end gap-3">
+                    <div className="min-w-0 flex-1">
+                      <Field label={`${t.label}${t.unit ? ` (${t.unit})` : ''}`} htmlFor={fid} hint={t.scored ? `${t.rule} · illustrative` : t.rule}>
+                        {t.choices ? (
+                          <select id={fid} className={inputCls} value={entry[t.id]} disabled={!canEdit} onChange={(e) => set(t.id, e.target.value)}>
+                            <option value="">Choose…</option>
+                            {t.choices.map((c) => <option key={c}>{c}</option>)}
+                          </select>
+                        ) : (
+                          <input id={fid} inputMode="decimal" className={inputCls} value={entry[t.id]} disabled={!canEdit} placeholder={`e.g. ${t.seed}`} onChange={(e) => set(t.id, e.target.value)} />
+                        )}
+                      </Field>
+                    </div>
+                    <span className="mb-6 flex w-32 shrink-0 flex-col items-end gap-1 text-right">
+                      <span aria-live="polite">
+                        {band && band !== 'not_scored' ? <BandChip band={band} /> : band === 'not_scored' ? <span className="text-xs text-muted">Not scored</span>
+                          : entry[t.id].trim() ? <span className="text-xs text-attn-fg">Enter a number</span> : <span className="text-xs text-muted">No band yet</span>}
+                      </span>
+                      {unchanged && <SourceLabel result={savedRow} />}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          </section>
+        );
+      })}
       {canEdit && (
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
           {missing.length > 0 && <p className="w-full text-[13px] text-plum-900">Still to enter: {missing.join(', ')}</p>}
-          <Button onClick={save} disabled={missing.length > 0}>{status === 'done' ? 'Update functional tests' : 'Save functional tests'}</Button>
-          <Button variant="ghost" onClick={fillSample}>Fill the rest with sample values</Button>
-          {status !== 'done' && <Button variant="danger" onClick={() => setSkipping(true)}>Skip with reason</Button>}
+          <Button className="min-h-[44px]" onClick={save} disabled={missing.length > 0}>{status === 'done' ? 'Update functional tests' : 'Save functional tests'}</Button>
+          <Button className="min-h-[44px]" variant="ghost" onClick={fillSample}>Fill the rest with sample values</Button>
+          {results.length > 0 && <Button className="min-h-[44px]" variant="danger" onClick={() => s.run((d) => ops.clearStation(d, visit.id, 'functional', by), 'Functional tests cleared', undefined, { memberId: visit.memberId, by })}>Clear</Button>}
+          {status !== 'done' && <Button className="min-h-[44px]" variant="danger" onClick={() => setSkipping(true)}>Skip with reason</Button>}
         </div>
       )}
       <SkipDialog open={skipping} visit={visit} station="functional" onClose={() => setSkipping(false)} />
@@ -279,7 +380,7 @@ function SkippedNote({ visit, station, result, canEdit }: { visit: Visit; statio
   const st = stationOf(station);
   return (
     <div className="space-y-2 text-sm">
-      <p className="text-plum-900"><strong>Skipped:</strong> {result?.skipped?.reason}{result?.skipped && ` · ${staffName(result.skipped.byId)} · ${fmtTime(result.skipped.at)}`}</p>
+      <p className="flex flex-wrap items-center gap-2 text-plum-900">{result && <SourceLabel result={result} />}{result?.skipped && <span className="text-muted">{staffName(result.skipped.byId)} · {fmtTime(result.skipped.at)}</span>}</p>
       <p className="rounded-lg bg-watch-bg px-3 py-2 text-watch-fg">Not counted as zero; scores are worked out without it.</p>
       {canEdit && <Button variant="ghost" onClick={() => s.run((d) => ops.unskipStation(d, visit.id, station, by), `${st.label} back to enter results`)}>Enter results instead</Button>}
     </div>
@@ -290,7 +391,7 @@ function CompletenessFooter({ visit, canEdit }: { visit: Visit; canEdit: boolean
   const s = useDemo();
   const role = useStaffRole();
   const by = useBy();
-  const check = canPassCompleteness(visit);
+  const check = canPassCompleteness(visit, s.results);
   const inCount = STATIONS.filter((x) => visit.stations![x.id] === 'done' || visit.stations![x.id] === 'skipped').length;
   if (visit.completeness === 'passed') {
     return (
@@ -307,7 +408,10 @@ function CompletenessFooter({ visit, canEdit }: { visit: Visit; canEdit: boolean
           {!check.ok && (
             <p id="completeness-missing" className="text-muted">
               {/* Small screens: station names only, so the footer leaves room for the tests. */}
-              <span className="sm:hidden">Still missing: {STATIONS.filter((x) => visit.stations![x.id] === 'todo' || visit.stations![x.id] === 'in_progress').map((x) => x.label).join(', ') || check.missing.join(', ')}</span>
+              <span className="sm:hidden">Still missing: {[...new Set(check.missing.map((x) => x.split(':')[0]))].map((label) => {
+                const toCheck = check.missing.find((x) => x.startsWith(`${label}:`) && x.endsWith('to check'));
+                return toCheck ? `${label} (${toCheck.split(': ')[1].replace(' values still', '').replace(' value still', '')})` : label;
+              }).join(', ')}</span>
               <span className="hidden sm:inline">Still missing: {check.missing.join(' · ')}</span>
             </p>
           )}

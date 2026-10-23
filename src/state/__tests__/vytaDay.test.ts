@@ -97,13 +97,15 @@ describe('MA3 stations', () => {
 describe('Completeness check', () => {
   it('stays blocked, listing what is missing, until every station is done or skipped', () => {
     const { d, v } = setup();
-    expect(canPassCompleteness(v()).missing).toEqual(['InBody: not started', 'Functional: not started', 'ShapeScale: not started', 'VO2 max: not started']);
+    expect(canPassCompleteness(v(), d.results).missing).toEqual(['InBody: not started', 'Functional: not started', 'ShapeScale: not started', 'VO2 max: not started']);
     ops.uploadStation(d, v().id, 'inbody', 's-ma');
     ops.saveFunctional(d, v().id, SAMPLE, 's-ma');
     ops.skipStation(d, v().id, 'shapescale', 'Scanner offline – reschedule at 3-month', 's-ma');
     expect(ops.passCompleteness(d, v().id, 's-ma')).toBe(false);
-    expect(canPassCompleteness(v()).missing).toEqual(['VO2 max: not started']);
+    expect(canPassCompleteness(v(), d.results).missing).toEqual(['InBody: 15 values still to check', 'VO2 max: not started']);
+    ops.markStationChecked(d, v().id, 'inbody', 's-ma');
     ops.uploadStation(d, v().id, 'vo2', 's-ma');
+    ops.markStationChecked(d, v().id, 'vo2', 's-ma');
     expect(getQueue(d, 'ma').some((q) => q.label === 'Completeness check')).toBe(true);
     expect(ops.passCompleteness(d, v().id, 's-ma')).toBe(true);
     expect(v().completeness).toBe('passed');
@@ -117,6 +119,8 @@ describe('Completeness check', () => {
     ops.saveFunctional(d, v().id, SAMPLE, 's-ma');
     ops.skipStation(d, v().id, 'shapescale', 'Scanner offline – reschedule at 3-month', 's-ma');
     ops.uploadStation(d, v().id, 'vo2', 's-ma');
+    ops.markStationChecked(d, v().id, 'inbody', 's-ma');
+    ops.markStationChecked(d, v().id, 'vo2', 's-ma');
     ops.passCompleteness(d, v().id, 's-ma');
     const task = getQueue(d, 'np').find((q) => q.label.startsWith('Final review'))!;
     expect(task.reason).toContain('ShapeScale skipped');
@@ -136,8 +140,10 @@ describe('Completeness check', () => {
     ops.saveFunctional(d, v().id, SAMPLE, 's-ma');
     ops.skipStation(d, v().id, 'shapescale', 'Scanner offline – reschedule at 3-month', 's-ma');
     ops.uploadStation(d, v().id, 'vo2', 's-ma');
+    ops.markStationChecked(d, v().id, 'inbody', 's-ma');
+    ops.markStationChecked(d, v().id, 'vo2', 's-ma');
     ops.passCompleteness(d, v().id, 's-ma');
-    expect(d.timeline.length - before).toBe(6);
+    expect(d.timeline.length - before).toBe(8);
   });
 });
 
@@ -203,9 +209,11 @@ describe('Super admin on Your Vyta Day', () => {
     ops.saveFunctional(d, v().id, SAMPLE, ADMIN);
     ops.skipStation(d, v().id, 'shapescale', 'Scanner offline – reschedule at 3-month', ADMIN);
     ops.uploadStation(d, v().id, 'vo2', ADMIN);
+    ops.markStationChecked(d, v().id, 'inbody', ADMIN);
+    ops.markStationChecked(d, v().id, 'vo2', ADMIN);
     expect(ops.passCompleteness(d, v().id, ADMIN)).toBe(true);
     const events = d.timeline.slice(before);
-    expect(events.length).toBe(6);
+    expect(events.length).toBe(8);
     expect(events.every((e) => e.by === ADMIN)).toBe(true);
     expect(events[events.length - 1].text).toContain('Quinn Harper');
     expect(d.results.find((r) => r.panel === 'ShapeScale')!.skipped!.byId).toBe(ADMIN);

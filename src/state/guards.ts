@@ -1,6 +1,6 @@
 // Gate guards (docs/SCHEMA.md §4). The UI disables the gate button and lists `missing` in plain words.
-import type { PlanItem, PlanField, Report, Result, Visit } from '../types';
-import { STATIONS } from '../data/stations';
+import type { PlanItem, PlanField, Report, Result, Station, Visit } from '../types';
+import { STATIONS, UPLOADS, FUNCTIONAL, stationOf } from '../data/stations';
 import { FIELD_LABEL, BAND_RANK } from '../data/protocol';
 
 const empty = (v?: string) => !v || !v.trim();
@@ -48,14 +48,27 @@ export function canApprovePreReview(report: Report, results: Result[]): GateChec
   };
 }
 
-// Completeness check (MA3 footer, PRD V4): every test is either in or skipped with a reason.
-export function canPassCompleteness(visit: Visit): { ok: boolean; missing: string[] } {
+// Values in for one station, e.g. "12 of 15 values in". Functional counts every field; the two unscored ones are optional.
+export function stationCount(visit: Visit, results: Result[], station: Station) {
+  const rows = results.filter((r) => r.visitId === visit.id && r.panel === stationOf(station).panel && !r.skipped);
+  const total = station === 'functional' ? FUNCTIONAL.length : UPLOADS[station].length;
+  const needed = station === 'functional' ? FUNCTIONAL.filter((t) => t.scored).length : total;
+  const inCount = rows.filter((r) => r.value !== null && r.value !== '').length;
+  const toCheck = rows.filter((r) => r.origin === 'scan' && !r.checked).length;
+  return { in: inCount, total, needed, toCheck };
+}
+
+// Completeness check (MA3 footer, PRD V4): every test is in or skipped with a reason, and every scan value checked.
+export function canPassCompleteness(visit: Visit, results: Result[] = []): { ok: boolean; missing: string[] } {
   const missing: string[] = [];
   if (!visit.stations) return { ok: false, missing: ['This visit has no test stations'] };
   for (const st of STATIONS) {
     const status = visit.stations[st.id];
-    if (status === 'todo') missing.push(`${st.label}: not started`);
-    else if (status === 'in_progress') missing.push(`${st.label}: results not saved yet`);
+    if (status === 'skipped') continue;
+    if (status === 'todo') { missing.push(`${st.label}: not started`); continue; }
+    const c = stationCount(visit, results, st.id);
+    if (status === 'in_progress' || c.in < c.needed) missing.push(`${st.label}: ${c.in} of ${c.total} values in`);
+    if (c.toCheck) missing.push(`${st.label}: ${c.toCheck} value${c.toCheck > 1 ? 's' : ''} still to check`);
   }
   if (visit.completeness === 'passed') missing.push('Completeness has already passed');
   return { ok: missing.length === 0, missing };

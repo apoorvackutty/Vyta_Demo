@@ -186,7 +186,13 @@ export interface Result {
   source: string; // "Lab report p.3" or "InBody scan"
   skipped?: { reason: string; byId: string; at: string };
   excludedFromScore?: boolean; // skipped tests are left out of scores, never counted as zero
+  // Your Vyta Day values: where each one came from, and whether the MA has checked it against the printout.
+  origin?: ResultOrigin;
+  checked?: boolean;
+  scanValue?: number | string | null; // what the scan read, kept when the MA edits it
+  section?: string;                   // "Body composition", "Thresholds" ...
 }
+export type ResultOrigin = 'scan' | 'scan_edited' | 'entered';
 
 export interface Scores {
   vmri: number;

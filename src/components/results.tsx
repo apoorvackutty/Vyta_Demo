@@ -1,5 +1,6 @@
 // Lab result helpers shared by N2 and the member record's Results tab.
 import { clsx } from 'clsx';
+import { MinusCircle, PencilLine, ScanLine } from 'lucide-react';
 import { useDemo } from '../state/store';
 import { LAB_SOURCE } from '../data/protocol';
 import { fmtDate } from '../lib/time';
@@ -33,3 +34,32 @@ export function SourceDialog({ result, results, onClose }: { result: Result | nu
   );
 }
 
+
+// Where a Your Vyta Day value came from: word plus icon, never colour alone (MA3 and the Results tab).
+// "Edited" reveals what the scan read on hover and focus, and always to screen readers.
+export function SourceLabel({ result }: { result: Result }) {
+  const base = 'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium';
+  if (result.skipped) return <span className={clsx(base, 'bg-watch-bg text-watch-fg')}><MinusCircle size={12} aria-hidden="true" /> Skipped: {result.skipped.reason}</span>;
+  if (result.origin === 'entered') return <span className={clsx(base, 'bg-neutral-bg text-neutral-fg')}><PencilLine size={12} aria-hidden="true" /> Entered</span>;
+  if (result.origin === 'scan_edited') {
+    const read = `${result.scanValue ?? '—'}${result.unit ? ` ${result.unit}` : ''}`;
+    return (
+      <span tabIndex={0} className={clsx(base, 'group relative cursor-help bg-info-bg text-info-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-terracotta-500')}>
+        <ScanLine size={12} aria-hidden="true" /> From scan · edited<span className="sr-only">. The scan read {read}</span>
+        <span aria-hidden="true" className="pointer-events-none absolute bottom-full right-0 z-20 mb-1 hidden whitespace-nowrap rounded-md bg-plum-900 px-2 py-1 text-xs text-cream-100 shadow-card group-hover:block group-focus:block">Scan read {read}</span>
+      </span>
+    );
+  }
+  if (result.origin === 'scan' && !result.checked) return <span className={clsx(base, 'bg-watch-bg text-watch-fg')}><ScanLine size={12} aria-hidden="true" /> From scan · check</span>;
+  if (result.origin === 'scan') return <span className={clsx(base, 'bg-ok-bg text-ok-fg')}><ScanLine size={12} aria-hidden="true" /> From scan</span>;
+  return null;
+}
+
+// "Body composition · 8 from scan · 1 edited · 2 to check"
+export function sectionSummary(rows: Result[]) {
+  const n = (f: (r: Result) => boolean) => rows.filter(f).length;
+  return [
+    [n((r) => r.origin === 'scan'), 'from scan'], [n((r) => r.origin === 'scan_edited'), 'edited'],
+    [n((r) => r.origin === 'entered'), 'entered'], [n((r) => r.origin === 'scan' && !r.checked), 'to check'],
+  ].filter(([c]) => c).map(([c, w]) => `${c} ${w}`).join(' · ');
+}

@@ -12,7 +12,7 @@ import { ageYears, fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { nextSlots, type SlotKind } from '../../lib/slots';
 import { detailsKey, doseKey, fmtAnswer, oftenKey, reactionKey, yearsKey } from '../../lib/intakeFormat';
 import { DOSE_LISTS, SURGERY_YEARS, listItems } from '../../lib/intakeFlow';
-import { SourceDialog, fmtValue } from '../../components/results';
+import { SourceDialog, SourceLabel, fmtValue, sectionSummary } from '../../components/results';
 import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
 import type { IntakeValue, Result, StaffRole, Visit } from '../../types';
 import NotFound from './NotFound';
@@ -438,26 +438,39 @@ function VytaDayResults({ results, visit }: { results: Result[]; visit?: Visit }
     <>
       <SectionTitle>Your Vyta Day · {fmtDate(visit.at)}</SectionTitle>
       <div className="grid gap-x-8 xl:grid-cols-2">
-        {[...new Set(results.map((r) => r.panel))].map((panel) => (
-          <div key={panel} className="mb-4">
-            <h3 className="mb-1 text-[13px] font-medium text-muted">{panel} · source: {results.find((r) => r.panel === panel)!.source}</h3>
-            <table className="w-full text-sm">
-              <tbody>
-                {results.filter((r) => r.panel === panel).map((r) => (
-                  <tr key={r.id} className="border-t border-line">
-                    {r.skipped ? (
-                      <td colSpan={3} className="py-1.5 text-plum-900">Skipped: {r.skipped.reason}. <span className="text-muted">Not counted as zero; scores are worked out without it.</span></td>
-                    ) : (<>
-                      <td className="py-1.5 text-plum-900">{r.marker}</td>
-                      <td className="tabular-nums text-plum-900">{fmtValue(r)}</td>
-                      <td className="text-right">{r.band === 'not_scored' ? <span className="text-xs text-muted">Not scored</span> : <BandChip band={r.band} />}</td>
-                    </>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+        {[...new Set(results.map((r) => r.panel))].map((panel) => {
+          const rows = results.filter((r) => r.panel === panel);
+          const sections = [...new Set(rows.map((r) => r.section ?? ''))];
+          return (
+            <div key={panel} className="mb-4">
+              <h3 className="mb-1 text-[13px] font-medium text-muted">{panel} · source: {rows[0].source}</h3>
+              {sections.map((sec) => {
+                const list = rows.filter((r) => (r.section ?? '') === sec);
+                return (
+                  <div key={sec} className="mb-2">
+                    {sec && <h4 className="mt-2 text-xs font-medium text-plum-900">{sec} <span className="font-normal text-muted">· {sectionSummary(list)}</span></h4>}
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {list.map((r) => (
+                          <tr key={r.id} className="border-t border-line">
+                            {r.skipped ? (
+                              <td colSpan={4} className="py-1.5 text-plum-900"><SourceLabel result={r} /> <span className="text-muted">Not counted as zero; scores are worked out without it.</span></td>
+                            ) : (<>
+                              <td className="py-1.5 text-plum-900">{r.marker}</td>
+                              <td className="tabular-nums text-plum-900">{fmtValue(r)}</td>
+                              <td className="text-right"><SourceLabel result={r} /></td>
+                              <td className="w-28 text-right">{r.band === 'not_scored' ? <span className="text-xs text-muted">Not scored</span> : <BandChip band={r.band} />}</td>
+                            </>)}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </>
   );

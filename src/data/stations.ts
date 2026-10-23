@@ -1,6 +1,18 @@
 // Your Vyta Day body tests (docs/SAMPLE_DATA.md §5). All values fictional; functional cutoffs are illustrative.
 import type { Band, Result, Station } from '../types';
 
+// Fields are shown in these sections, in this order (clinic printout order).
+export const SECTIONS: Record<Station, string[]> = {
+  inbody: ['Body composition', 'Hydration', 'Lean mass by region', 'Metabolism'],
+  functional: ['Strength', 'Balance & mobility', 'Recorded only (not scored)'],
+  shapescale: ['Scores', 'Circumferences'],
+  vo2: ['Peak', 'Thresholds'],
+};
+
+// The fictional name printed on every sample report, for the name check before Apply.
+export const REPORT_NAME = 'Testelle M';
+export const nameMatches = (memberName: string, onReport = REPORT_NAME) => memberName.trim().toLowerCase() === onReport.trim().toLowerCase();
+
 export const STATIONS: { id: Station; label: string; panel: string; source: string; upload?: string }[] = [
   { id: 'inbody', label: 'InBody', panel: 'InBody', source: 'InBody scan', upload: 'Upload scan' },
   { id: 'functional', label: 'Functional', panel: 'Functional', source: 'Functional tests (MA entry)' },
@@ -28,41 +40,41 @@ export function rangeBand(value: number, r?: Range): Band {
   return Math.abs(value - bound) / bound <= 0.15 ? 'watch' : 'needs_attention';
 }
 
-interface UploadRow { marker: string; value: number | string; unit?: string; target?: string; range?: Range }
+interface UploadRow { section: string; marker: string; value: number | string; unit?: string; target?: string; range?: Range }
 export const UPLOADS: Record<Exclude<Station, 'functional'>, UploadRow[]> = {
   inbody: [
-    { marker: 'Weight', value: 171.0, unit: 'lb' },
-    { marker: 'Skeletal muscle mass', value: 48.5, unit: 'lb', target: '42–50 lb', range: { min: 42, max: 50 } },
-    { marker: 'Body fat', value: 41.8, unit: '%', target: '21–30%', range: { min: 21, max: 30 } },
-    { marker: 'Body fat mass', value: 71.5, unit: 'lb' },
-    { marker: 'Visceral fat area', value: 159.3, unit: 'cm²', target: '<100 cm²', range: { max: 100 } },
-    { marker: 'BMI', value: 27.6, target: '18.5–24.9', range: { min: 18.5, max: 24.9 } },
-    { marker: 'ECW/TBW', value: 0.389, target: '0.360–0.380', range: { min: 0.36, max: 0.38 } },
-    { marker: 'Total body water', value: 73.0, unit: 'lb' },
-    { marker: 'Phase angle', value: 4.6, unit: '°', target: '5.0–7.0°', range: { min: 5, max: 7 } },
-    { marker: 'BMR', value: 1345, unit: 'kcal' },
-    { marker: 'Body cell mass', value: 62.0, unit: 'lb' },
-    { marker: 'SMI', value: 6.3, unit: 'kg/m²', target: '≥6.5', range: { min: 6.5 } },
-    { marker: 'Lean mass, legs', value: 27.8, unit: 'lb' },
-    { marker: 'Lean mass, trunk', value: 41.4, unit: 'lb' },
-    { marker: 'Lean mass, arms', value: 9.08, unit: 'lb' },
+    { section: 'Body composition', marker: 'Weight', value: 171.0, unit: 'lb' },
+    { section: 'Body composition', marker: 'Skeletal muscle mass', value: 48.5, unit: 'lb', target: '42–50 lb', range: { min: 42, max: 50 } },
+    { section: 'Body composition', marker: 'Body fat', value: 41.8, unit: '%', target: '21–30%', range: { min: 21, max: 30 } },
+    { section: 'Body composition', marker: 'Body fat mass', value: 71.5, unit: 'lb' },
+    { section: 'Body composition', marker: 'Visceral fat area', value: 159.3, unit: 'cm²', target: '<100 cm²', range: { max: 100 } },
+    { section: 'Body composition', marker: 'BMI', value: 27.6, target: '18.5–24.9', range: { min: 18.5, max: 24.9 } },
+    { section: 'Hydration', marker: 'ECW/TBW', value: 0.389, target: '0.360–0.380', range: { min: 0.36, max: 0.38 } },
+    { section: 'Hydration', marker: 'Total body water', value: 73.0, unit: 'lb' },
+    { section: 'Hydration', marker: 'Phase angle', value: 4.6, unit: '°', target: '5.0–7.0°', range: { min: 5, max: 7 } },
+    { section: 'Metabolism', marker: 'BMR', value: 1345, unit: 'kcal' },
+    { section: 'Metabolism', marker: 'Body cell mass', value: 62.0, unit: 'lb' },
+    { section: 'Body composition', marker: 'SMI', value: 6.3, unit: 'kg/m²', target: '≥6.5', range: { min: 6.5 } },
+    { section: 'Lean mass by region', marker: 'Lean mass, legs', value: 27.8, unit: 'lb' },
+    { section: 'Lean mass by region', marker: 'Lean mass, trunk', value: 41.4, unit: 'lb' },
+    { section: 'Lean mass by region', marker: 'Lean mass, arms', value: 9.08, unit: 'lb' },
   ],
   // Testelle's baseline scan is skipped; these are the values a working scanner would return (her 3-month scan).
   shapescale: [
-    { marker: 'Shape score', value: 86 },
-    { marker: 'Health score', value: 89 },
-    { marker: 'Waist', value: 28.3, unit: 'in' },
-    { marker: 'Hips', value: 39.7, unit: 'in' },
-    { marker: 'Shoulders', value: 40.0, unit: 'in' },
+    { section: 'Scores', marker: 'Shape score', value: 86 },
+    { section: 'Scores', marker: 'Health score', value: 89 },
+    { section: 'Circumferences', marker: 'Waist', value: 28.3, unit: 'in' },
+    { section: 'Circumferences', marker: 'Hips', value: 39.7, unit: 'in' },
+    { section: 'Circumferences', marker: 'Shoulders', value: 40.0, unit: 'in' },
   ],
   vo2: [
-    { marker: 'VO2 max', value: 32.0, unit: 'mL/kg/min', target: '25–35', range: { min: 25, max: 35 } },
-    { marker: 'Max heart rate', value: 180, unit: 'bpm' },
-    { marker: 'Max power', value: 100, unit: 'W' },
-    { marker: 'VT2 heart rate', value: 158, unit: 'bpm' },
-    { marker: 'VT2 power', value: 85, unit: 'W' },
-    { marker: 'VT1 heart rate', value: 108, unit: 'bpm' },
-    { marker: 'Percentile', value: 52, unit: '%' },
+    { section: 'Peak', marker: 'VO2 max', value: 32.0, unit: 'mL/kg/min', target: '25–35', range: { min: 25, max: 35 } },
+    { section: 'Peak', marker: 'Max heart rate', value: 180, unit: 'bpm' },
+    { section: 'Peak', marker: 'Max power', value: 100, unit: 'W' },
+    { section: 'Thresholds', marker: 'VT2 heart rate', value: 158, unit: 'bpm' },
+    { section: 'Thresholds', marker: 'VT2 power', value: 85, unit: 'W' },
+    { section: 'Thresholds', marker: 'VT1 heart rate', value: 108, unit: 'bpm' },
+    { section: 'Peak', marker: 'Percentile', value: 52, unit: '%' },
   ],
 };
 
@@ -74,6 +86,7 @@ export function uploadResults(memberId: string, visitId: string, station: Exclud
   return UPLOADS[station].map((r) => ({
     id: resultId(visitId, station, r.marker), memberId, visitId, panel: st.panel, marker: r.marker, value: r.value, unit: r.unit,
     target: r.target, band: typeof r.value === 'number' ? rangeBand(r.value, r.range) : 'not_scored', source: st.source,
+    section: r.section, origin: 'scan' as const, checked: false, scanValue: r.value,
   }));
 }
 
@@ -87,19 +100,19 @@ export function bandFor(station: Station, marker: string, value: number | string
 // ---------- Functional tests (MA enters these) ----------
 export type FunctionalId = 'carry' | 'balanceR' | 'balanceL' | 'gait' | 'grip' | 'sitStand' | 'subjective' | 'consistency';
 export interface FunctionalTest {
-  id: FunctionalId; marker: string; label: string; unit?: string; rule: string;
+  id: FunctionalId; section: string; marker: string; label: string; unit?: string; rule: string;
   choices?: string[]; scored: boolean; seed: number | string;
 }
 export const FUNCTIONAL: FunctionalTest[] = [
-  { id: 'carry', marker: 'Farmer carry', label: 'Farmer carry', unit: 'lb', rule: '≥100 Elite · 70–99 Optimal · <70 Watch', scored: true, seed: 70 },
-  { id: 'balanceR', marker: 'Single-leg balance R', label: 'Single-leg balance, right', unit: 's', rule: '≥30 Optimal · <30 Watch', scored: true, seed: 30 },
-  { id: 'balanceL', marker: 'Single-leg balance L', label: 'Single-leg balance, left', unit: 's', rule: '≥30 Optimal · <30 Watch', scored: true, seed: 30 },
-  { id: 'gait', marker: 'Gait speed (30 ft)', label: 'Gait speed, 30 ft', unit: 's', rule: '≤6.0 Elite · 6.1–7.5 Optimal · >7.5 Watch', scored: true, seed: 6.9 },
-  { id: 'grip', marker: 'Grip strength', label: 'Grip strength', unit: 'lb', rule: '>60 Elite · ≥35.3 Optimal · <35.3 Watch', scored: true, seed: 58 },
-  { id: 'sitStand', marker: 'Sit-to-stand floor rise', label: 'Sit-to-stand floor rise', rule: 'No assistance Optimal · One-hand Watch · Two-hand or unable Needs attention',
+  { id: 'carry', section: 'Strength', marker: 'Farmer carry', label: 'Farmer carry', unit: 'lb', rule: '≥100 Elite · 70–99 Optimal · <70 Watch', scored: true, seed: 70 },
+  { id: 'balanceR', section: 'Balance & mobility', marker: 'Single-leg balance R', label: 'Single-leg balance, right', unit: 's', rule: '≥30 Optimal · <30 Watch', scored: true, seed: 30 },
+  { id: 'balanceL', section: 'Balance & mobility', marker: 'Single-leg balance L', label: 'Single-leg balance, left', unit: 's', rule: '≥30 Optimal · <30 Watch', scored: true, seed: 30 },
+  { id: 'gait', section: 'Balance & mobility', marker: 'Gait speed (30 ft)', label: 'Gait speed, 30 ft', unit: 's', rule: '≤6.0 Elite · 6.1–7.5 Optimal · >7.5 Watch', scored: true, seed: 6.9 },
+  { id: 'grip', section: 'Strength', marker: 'Grip strength', label: 'Grip strength', unit: 'lb', rule: '>60 Elite · ≥35.3 Optimal · <35.3 Watch', scored: true, seed: 58 },
+  { id: 'sitStand', section: 'Balance & mobility', marker: 'Sit-to-stand floor rise', label: 'Sit-to-stand floor rise', rule: 'No assistance Optimal · One-hand Watch · Two-hand or unable Needs attention',
     choices: ['No assistance', 'One-hand assistance', 'Two-hand assistance', 'Unable'], scored: true, seed: 'One-hand assistance' },
-  { id: 'subjective', marker: 'Subjective strength', label: 'Subjective strength', rule: 'Recorded, not scored', choices: ['Poor', 'Fair', 'Good', 'Excellent'], scored: false, seed: 'Fair' },
-  { id: 'consistency', marker: 'Exercise consistency', label: 'Exercise consistency', rule: 'Recorded, not scored', choices: ['Poor', 'Fair', 'Good', 'Excellent'], scored: false, seed: 'Fair' },
+  { id: 'subjective', section: 'Recorded only (not scored)', marker: 'Subjective strength', label: 'Subjective strength', rule: 'Recorded, not scored', choices: ['Poor', 'Fair', 'Good', 'Excellent'], scored: false, seed: 'Fair' },
+  { id: 'consistency', section: 'Recorded only (not scored)', marker: 'Exercise consistency', label: 'Exercise consistency', rule: 'Recorded, not scored', choices: ['Poor', 'Fair', 'Good', 'Excellent'], scored: false, seed: 'Fair' },
 ];
 
 // Illustrative cutoffs from SAMPLE_DATA §5. Returns null while the entry is empty or not a number.
