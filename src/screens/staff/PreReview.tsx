@@ -380,31 +380,33 @@ function GateFooter({ report, results, canEdit, memberName }: { report: Report; 
   const sendReason = reason === 'Other' ? note.trim() : note.trim() ? `${reason}: ${note.trim()}` : reason;
 
   return (
-    <div className="sticky bottom-0 z-30 border-t border-line bg-paper px-6 py-3 shadow-card">
+    <div className="sticky bottom-0 z-30 border-t border-line bg-paper px-4 py-2 shadow-card sm:px-6 sm:py-3">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2">
-        <div className="flex min-w-[180px] flex-col gap-1 text-xs">
+        {/* Small screens: one line of counts instead of two progress bars, so the review keeps most of the screen. */}
+        <p className="text-xs text-plum-900 sm:hidden"><strong className="tabular-nums">{check.findingsDecided}/{check.findingsTotal}</strong> findings decided · <strong className="tabular-nums">{check.itemsResolved}/{check.itemsTotal}</strong> items resolved</p>
+        <div className="hidden min-w-[180px] flex-col gap-1 text-xs sm:flex">
           <span className="text-plum-900">Findings decided <strong className="tabular-nums">{check.findingsDecided}/{check.findingsTotal}</strong></span>
           <ProgressBar value={check.findingsDecided / Math.max(1, check.findingsTotal)} label="Findings decided" />
         </div>
-        <div className="flex min-w-[180px] flex-col gap-1 text-xs">
+        <div className="hidden min-w-[180px] flex-col gap-1 text-xs sm:flex">
           <span className="text-plum-900">Items resolved <strong className="tabular-nums">{check.itemsResolved}/{check.itemsTotal}</strong></span>
           <ProgressBar value={check.itemsResolved / Math.max(1, check.itemsTotal)} label="Plan items resolved" />
         </div>
         {canEdit && suggestable > 0 && (
           <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.acceptSuggestions(d, report.id, by), `Protocol suggestions accepted for ${suggestable} findings`, undefined, { memberId: report.memberId, by })}>
-            Accept protocol suggestions ({suggestable} left)
+            <span className="sm:hidden">Accept suggestions ({suggestable})</span><span className="hidden sm:inline">Accept protocol suggestions ({suggestable} left)</span>
           </Button>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="danger" disabled={!canEdit} onClick={() => setSendBack(true)}>Send back with reason</Button>
-          <div className="group relative" onMouseLeave={() => setWhy(false)}>
+        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+          <Button variant="danger" className="flex-1 sm:flex-none" disabled={!canEdit} onClick={() => setSendBack(true)}><span className="sm:hidden">Send back</span><span className="hidden sm:inline">Send back with reason</span></Button>
+          <div className="group relative flex-1 sm:flex-none" onMouseLeave={() => setWhy(false)}>
             <Button aria-disabled={!check.ok || !canEdit} disabled={!canEdit} aria-describedby="gate-why"
-              className={clsx(!check.ok && 'cursor-not-allowed opacity-50 hover:bg-plum-700')} onClick={approve}>
-              Approve pre-review
+              className={clsx('w-full', !check.ok && 'cursor-not-allowed opacity-50 hover:bg-plum-700')} onClick={approve}>
+              <span className="sm:hidden">Approve</span><span className="hidden sm:inline">Approve pre-review</span>
             </Button>
             {!check.ok && (
               <div id="gate-why" role="tooltip"
-                className={clsx('absolute bottom-full right-0 mb-2 w-80 rounded-lg bg-plum-900 p-3 text-xs text-cream-100 shadow-card group-hover:block group-focus-within:block', why ? 'block' : 'hidden')}>
+                className={clsx('absolute bottom-full right-0 mb-2 w-[min(20rem,calc(100vw-2rem))] rounded-lg bg-plum-900 p-3 text-xs text-cream-100 shadow-card group-hover:block group-focus-within:block', why ? 'block' : 'hidden')}>
                 <p className="mb-1 font-semibold">Before you can approve:</p>
                 <ul className="list-disc space-y-0.5 pl-4">{check.missing.map((x) => <li key={x}>{x}</li>)}</ul>
               </div>

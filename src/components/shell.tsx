@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutList, Users, RotateCcw, Columns2, LogOut, Search, X } from 'lucide-react';
+import { LayoutList, Users, RotateCcw, Columns2, LogOut, Search, X, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Role, StaffRole } from '../types';
 import { useDemo } from '../state/store';
@@ -16,6 +16,8 @@ export const ROLE_LABEL: Record<Role, string> = {
 export function DemoBar() {
   const { role, setRole, scenario, loadScenario, reset, split, setSplit, now } = useDemo();
   const nav = useNavigate();
+  // On small screens the presenter controls fold behind one button, so the bar stays one slim row.
+  const [open, setOpen] = useState(false);
   const changeRole = (r: Role) => {
     setRole(r);
     if (r !== 'member') nav(`/staff/${r}/today`);
@@ -23,15 +25,19 @@ export function DemoBar() {
   return (
     <div className="sticky top-0 z-40 flex flex-wrap items-center gap-x-4 gap-y-2 bg-plum-900 px-4 py-2 text-[13px] text-cream-100">
       <span className="font-semibold tracking-wide">Vyta Care · Demo</span>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="demo-controls"
+        className="flex min-h-[32px] items-center gap-1.5 rounded-md px-2 hover:bg-plum-800 lg:hidden"><SlidersHorizontal size={14} aria-hidden="true" /> Demo</button>
+      <span className="order-2 ml-auto rounded bg-plum-800 px-2 py-0.5 text-xs opacity-80 lg:order-3 lg:ml-0">Fictional data</span>
+      <div id="demo-controls" className={clsx('order-3 w-full flex-wrap items-center gap-x-4 gap-y-2 lg:order-2 lg:flex lg:w-auto lg:flex-1', open ? 'flex' : 'hidden')}>
       <label className="flex items-center gap-2">
-        <span className="opacity-80">View as</span>
+        <span className="whitespace-nowrap opacity-80">View as</span>
         <select value={role} onChange={(e) => changeRole(e.target.value as Role)} className="rounded-md border border-cream-100/30 bg-plum-800 px-2 py-1 text-cream-100">
           {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
         </select>
       </label>
-      <label className="flex items-center gap-2">
-        <span className="opacity-80">Jump to</span>
-        <select value={scenario} onChange={(e) => loadScenario(e.target.value as ScenarioId)} className="rounded-md border border-cream-100/30 bg-plum-800 px-2 py-1 text-cream-100">
+      <label className="flex min-w-0 max-w-full items-center gap-2">
+        <span className="whitespace-nowrap opacity-80">Jump to</span>
+        <select value={scenario} onChange={(e) => loadScenario(e.target.value as ScenarioId)} className="min-w-0 flex-1 rounded-md border border-cream-100/30 bg-plum-800 px-2 py-1 text-cream-100">
           {SCENARIOS.map((s) => <option key={s.id} value={s.id} disabled={!s.ready}>{s.label}{s.ready ? '' : ' (next build)'}</option>)}
         </select>
       </label>
@@ -39,13 +45,13 @@ export function DemoBar() {
         <a href="/member/m-testelle" target="_blank" rel="noreferrer" className="rounded-md px-2 py-1 underline-offset-2 hover:bg-plum-800 hover:underline">Open full-screen (for a phone) ↗</a>
       )}
       {role !== 'member' && (
-        <button onClick={() => setSplit(!split)} aria-pressed={split} className={clsx('flex items-center gap-1.5 rounded-md px-2 py-1', split ? 'bg-terracotta-500 text-plum-900' : 'hover:bg-plum-800')}>
+        <button onClick={() => setSplit(!split)} aria-pressed={split} className={clsx('flex items-center gap-1.5 rounded-md px-2 py-1 max-sm:hidden', split ? 'bg-terracotta-500 text-plum-900' : 'hover:bg-plum-800')}>
           <Columns2 size={14} /> Member side by side
         </button>
       )}
       <span className="ml-auto opacity-80">Clinic time: {fmtDateTime(now)}</span>
       <button onClick={() => { reset(); nav('/staff/guide/today'); }} title="Back to Day 0 and the sign-in screen" className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-plum-800"><RotateCcw size={14} /> Reset demo</button>
-      <span className="rounded bg-plum-800 px-2 py-0.5 text-xs opacity-80">Fictional data</span>
+      </div>
     </div>
   );
 }
@@ -113,6 +119,8 @@ export function StaffShell({ children }: { children: ReactNode }) {
   const { now, signOut, toast } = useDemo();
   const me = STAFF.find((s) => s.id === STAFF_BY_ROLE[role])!;
   const link = ({ isActive }: { isActive: boolean }) => clsx('flex items-center gap-3 rounded-lg px-3 py-2 text-sm', isActive ? 'bg-paper/10 font-semibold text-paper' : 'text-cream-200 hover:bg-paper/5');
+  const topLink = ({ isActive }: { isActive: boolean }) => clsx('flex min-h-[40px] items-center gap-1.5 rounded-lg px-3 text-sm', isActive ? 'bg-plum-100 font-semibold text-plum-700' : 'text-plum-900 hover:bg-cream-100');
+  const signOutNow = () => { signOut('staff'); toast(`Signed out. See you soon, ${me.name.split(' ')[0]}`); };
   return (
     <div className="flex min-h-[calc(100vh-44px)]">
       <aside className="hidden w-56 shrink-0 flex-col bg-plum-800 px-3 py-5 md:flex">
@@ -126,13 +134,19 @@ export function StaffShell({ children }: { children: ReactNode }) {
             <Avatar name={me.name} size={30} />
             <span className="text-xs leading-tight text-cream-100"><span className="block font-semibold">{me.name}</span>{me.title}</span>
           </div>
-          <button onClick={() => { signOut('staff'); toast(`Signed out. See you soon, ${me.name.split(' ')[0]}`); }} className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-cream-200 hover:bg-paper/10"><LogOut size={14} /> Sign out</button>
+          <button onClick={signOutNow} className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-cream-200 hover:bg-paper/10"><LogOut size={14} /> Sign out</button>
         </div>
       </aside>
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 bg-cream-100 focus:outline-none">
-        <div className="flex items-center gap-4 border-b border-line bg-paper px-6 py-2">
-          <MemberSearch role={role} />
-          <span className="ml-auto whitespace-nowrap text-sm text-muted">Today · {fmtDate(now)}</span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-paper px-4 py-2 md:flex-nowrap md:px-6">
+          {/* Below 768 px the sidebar is hidden, so its links and Sign out move up here. */}
+          <nav aria-label="Main" className="flex gap-1 md:hidden">
+            <NavLink to={`/staff/${role}/today`} className={topLink}><LayoutList size={16} aria-hidden="true" /> Today</NavLink>
+            <NavLink to={`/staff/${role}/members`} className={topLink}><Users size={16} aria-hidden="true" /> Members</NavLink>
+          </nav>
+          <button onClick={signOutNow} className="ml-auto flex min-h-[40px] items-center gap-1.5 rounded-lg px-3 text-sm text-plum-700 hover:bg-plum-100 md:hidden"><LogOut size={16} aria-hidden="true" /> Sign out</button>
+          <div className="w-full md:w-auto md:max-w-sm md:flex-1"><MemberSearch role={role} /></div>
+          <span className="ml-auto hidden whitespace-nowrap text-sm text-muted sm:inline">Today · {fmtDate(now)}</span>
         </div>
         {children}
       </main>
@@ -142,8 +156,9 @@ export function StaffShell({ children }: { children: ReactNode }) {
 
 export function PhoneFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto w-[390px] shrink-0 rounded-[44px] border-[12px] border-plum-900 bg-cream-200 shadow-card">
-      <div className="relative h-[820px] overflow-hidden rounded-[32px] bg-cream-200">{children}</div>
+    // Under 640 px the screen already is a phone, so the mock-up frame drops away and the app fills it.
+    <div className="mx-auto w-full shrink-0 bg-cream-200 sm:w-[390px] sm:rounded-[44px] sm:border-[12px] sm:border-plum-900 sm:shadow-card">
+      <div className="relative h-[calc(100dvh-48px)] overflow-hidden bg-cream-200 sm:h-[820px] sm:rounded-[32px]">{children}</div>
     </div>
   );
 }

@@ -82,9 +82,9 @@ export function QueueRow({ item, memberName, ownerName, onAction, onOpen }: {
 }) {
   const bar = item.priority === 0 ? 'bg-danger-fg' : item.priority === 1 ? 'bg-terracotta-500' : item.priority === 2 ? 'bg-watch-fg/60' : 'bg-line';
   return (
-    <li className={clsx('group relative flex items-center gap-4 border-b border-line bg-paper px-4 py-3 last:border-b-0 hover:bg-cream-100', item.priority === 0 && 'bg-danger-bg/50')}>
+    <li className={clsx('group relative flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-paper px-4 py-3 last:border-b-0 hover:bg-cream-100 sm:flex-nowrap', item.priority === 0 && 'bg-danger-bg/50')}>
       <span className={clsx('absolute left-0 top-0 h-full w-1', bar)} aria-hidden="true" />
-      <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none" aria-label={`Open ${memberName}`}>
+      <button onClick={onOpen} className="flex min-w-0 flex-1 basis-full items-center gap-3 text-left focus-visible:outline-none sm:basis-0" aria-label={`Open ${memberName}`}>
         <Avatar name={memberName} size={34} />
         <span className="min-w-0">
           <span className="flex items-center gap-2">
@@ -96,8 +96,8 @@ export function QueueRow({ item, memberName, ownerName, onAction, onOpen }: {
         </span>
       </button>
       <span className="hidden w-24 text-xs text-muted md:block">{ownerName}</span>
-      <span className="w-10 text-right text-xs tabular-nums text-muted">{item.ageLabel}</span>
-      <span className="flex shrink-0 gap-2">
+      <span className="ml-[46px] text-xs tabular-nums text-muted sm:ml-0 sm:w-10 sm:text-right">{item.ageLabel}</span>
+      <span className="ml-auto flex shrink-0 gap-2 sm:ml-0">
         {item.secondary?.map((s) => <Button key={s.label} size="sm" variant="ghost" onClick={() => onAction(s.action)}>{s.label}</Button>)}
         {item.primary && <Button size="sm" onClick={() => onAction(item.primary!.action)}>{item.primary.label}</Button>}
       </span>

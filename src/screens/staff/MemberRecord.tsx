@@ -297,7 +297,7 @@ export default function MemberRecord() {
             {draw?.labsReceivedAt && results.length ? (
               <>
                 <SectionTitle action={reportLine && <span className="text-xs text-muted">{reportLine}</span>}>Baseline labs · received {fmtDate(draw.labsReceivedAt)}</SectionTitle>
-                <div className="grid gap-x-8 md:grid-cols-2">
+                <div className="grid gap-x-8 xl:grid-cols-2">
                   {[...new Set(results.map((r) => r.panel))].map((panel) => (
                     <div key={panel} className="mb-4">
                       <h3 className="mb-1 text-[13px] font-medium text-muted">{panel}</h3>
