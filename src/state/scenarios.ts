@@ -1,18 +1,20 @@
 import type { DemoData } from './ops';
 import {
   onboard, signForm, saveIntake, markDrawn, confirmVisit, labsReceived, finishDraft, skipIntakeToEnd, log,
-  acceptSuggestions, editPlanItem, removePlanItem, reviewPlanItem, approvePreReview, approveWording, bookVytaDayVisit,
+  acceptSuggestions, editPlanItem, reviewPlanItem, approvePreReview, approveWording, bookVytaDayVisit, editWording,
 } from './ops';
+import { WORDING_SUGGESTIONS } from '../data/wording';
 import { TESTELLE_BASE, ROSTER, TESTELLE_INTAKE, BLOOD_DRAW_SLOTS } from '../data/seed';
 import { INTAKE } from '../data/intake';
 import { fillRequired } from '../lib/intakeFlow';
 
-export type ScenarioId = 'day0' | 'intake_stalled' | 'labs_back' | 'vyta_day' | 'released' | 'safety' | 'quarterly';
+export type ScenarioId = 'day0' | 'intake_stalled' | 'labs_back' | 'wording' | 'vyta_day' | 'released' | 'safety' | 'quarterly';
 
 export const SCENARIOS: { id: ScenarioId; label: string; ready: boolean }[] = [
   { id: 'day0', label: '1 · Day 0 – after discovery call', ready: true },
   { id: 'intake_stalled', label: '2 · Intake in progress (stalled)', ready: true },
   { id: 'labs_back', label: '3 · Labs back – draft for NP', ready: true },
+  { id: 'wording', label: '3b · Pre-review approved – wording for Coach', ready: true },
   { id: 'vyta_day', label: '4 · Your Vyta Day – morning', ready: true },
   { id: 'released', label: '5 · After release – member home', ready: false },
   { id: 'safety', label: '6 · Safety flag raised', ready: false },
@@ -73,18 +75,29 @@ function labsBack(): DemoData {
   return d;
 }
 
-// Dana approved the pre-review on 19 Oct, Sienna checked the wording on 20 Oct. Wed 28 Oct, 8:15: Jordan's morning.
-function vytaDay(): DemoData {
+// Dana approved the pre-review on 19 Oct. Tue 20 Oct, 10:00: the draft waits on Sienna's wording review (C1).
+// Tirzepatide stays in the plan so Testelle can decline it at the results conversation (SAMPLE_DATA §7).
+function wording(): DemoData {
   const d = labsBack();
   const rid = 'r-m-testelle-baseline';
   d.now = '2026-10-19T09:40';
   acceptSuggestions(d, rid, 's-np');
   editPlanItem(d, rid, 'pi-testosterone', 'dose', '0.5 mg', 's-np');
   editPlanItem(d, rid, 'pi-iron', 'dose', '25 mg elemental', 's-np');
-  removePlanItem(d, rid, 'pi-tirzepatide', true, 's-np');
-  for (const item of ['pi-testosterone', 'pi-iron', 'pi-fiber', 'pi-strength', 'pi-winddown']) reviewPlanItem(d, rid, item, 's-np');
+  editPlanItem(d, rid, 'pi-tirzepatide', 'dose', '2.5 mg', 's-np');
+  editPlanItem(d, rid, 'pi-tirzepatide', 'route', 'Subcutaneous injection', 's-np');
+  for (const item of ['pi-testosterone', 'pi-iron', 'pi-tirzepatide', 'pi-fiber', 'pi-strength', 'pi-winddown']) reviewPlanItem(d, rid, item, 's-np');
   approvePreReview(d, rid, 's-np');
+  d.now = '2026-10-20T10:00';
+  return d;
+}
+
+// Sienna checked the wording on 20 Oct (softening one focus area). Wed 28 Oct, 8:15: Jordan's morning.
+function vytaDay(): DemoData {
+  const d = wording();
+  const rid = 'r-m-testelle-baseline';
   d.now = '2026-10-20T10:15';
+  editWording(d, rid, 'focus-2', WORDING_SUGGESTIONS['focus-2'], 's-coach');
   approveWording(d, rid, 's-coach');
   d.now = '2026-10-27T16:00';
   bookVytaDayVisit(d, 'm-testelle', 's-ma');
@@ -93,6 +106,7 @@ function vytaDay(): DemoData {
 }
 
 export function buildScenario(id: ScenarioId): DemoData {
+  if (id === 'wording') return wording();
   if (id === 'vyta_day') return vytaDay();
   if (id === 'intake_stalled') return intakeStalled();
   if (id === 'labs_back') return labsBack();

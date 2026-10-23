@@ -1,6 +1,6 @@
 # Build Plan and Demo Script
 
-**Status (23 Oct):** Steps 0–1 and tasks 10–17 are done (through N2 Pre-review; scenario 3 is playable). Continue from task 18 (C1 Wording review). Scenarios 4–7 are stubbed in `src/state/scenarios.ts`.
+**Status (23 Oct):** Steps 0–1 and tasks 10–19 are done, plus task 18 (C1 Wording review, scenario 3b) on branch `vyta-day-flow`. Continue from task 20 (N3 Final review). Scenarios 5–7 are stubbed in `src/state/scenarios.ts`.
 
 Rule from Tab's two discarded builds: **one screen or one feature per prompt, in order.** Don't ask Claude Code to "build the app". Finish a step, click through it, commit, then move on.
 

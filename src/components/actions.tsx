@@ -35,9 +35,17 @@ export function useQueueActions(role: StaffRole) {
       case 'mark_drawn': run((d) => ops.markDrawn(d, a.visitId, by), 'Marked as drawn · sent to lab'); break;
       case 'labs_received': run((d) => ops.labsReceived(d, a.visitId, by), 'Labs received · building the draft HEAL plan'); break;
       case 'pre_review': nav(`/staff/${role}/pre-review/${a.memberId}`); break;
+      case 'wording_review': nav(`/staff/${role}/wording/${a.memberId}`); break;
+      case 'final_review': nav(`/staff/${role}/final/${a.memberId}`); break;
+      case 'present': nav(`/staff/${role}/present/${a.memberId}`); break;
+      case 'release': nav(`/staff/${role}/release/${a.memberId}`); break;
+      case 'open_flag': nav(`/staff/${role}/flag/${a.flagId}`); break;
+      case 'place_order': break; // N6 (task 24)
       case 'start_visit': {
-        const v = useDemo.getState().visits.find((x) => x.id === a.visitId);
-        if (v && can(role, 'start_visit') && !ops.visitStarted(v) && v.completeness !== 'passed') run((d) => ops.startVisit(d, a.visitId, by), 'Visit started · InBody first');
+        const st = useDemo.getState();
+        const v = st.visits.find((x) => x.id === a.visitId);
+        // Opening a visit booked for another day only shows it; it starts on the day.
+        if (v && can(role, 'start_visit') && !ops.visitStarted(v) && v.completeness !== 'passed' && v.at.slice(0, 10) === st.now.slice(0, 10)) run((d) => ops.startVisit(d, a.visitId, by), 'Visit started · InBody first');
         nav(`/staff/${role}/visit/${a.visitId}`);
         break;
       }

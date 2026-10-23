@@ -170,7 +170,7 @@ export function Toasts() {
   const { toasts, dismissToast, holdToast, releaseToast, role } = useDemo();
   const { pathname } = useLocation();
   const fullPhone = pathname.startsWith('/member');
-  const overFooter = /\/pre-review\//.test(pathname); // clear the sticky gate footer
+  const overFooter = /\/(pre-review|wording|final|release|visit)\//.test(pathname); // clear the sticky gate footer
   return (
     <div aria-live="polite" className={clsx('pointer-events-none fixed z-50 flex flex-col gap-2',
       fullPhone ? 'left-1/2 top-4 w-[calc(100%-2rem)] max-w-[398px] -translate-x-1/2' : overFooter ? 'bottom-24' : 'bottom-4',

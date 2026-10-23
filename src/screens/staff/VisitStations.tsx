@@ -37,7 +37,9 @@ export default function VisitStations() {
   const [active, setActive] = useState<Station>(firstOpen ?? 'inbody');
   if (!v) return <EmptyState heading="h1" title="Visit not found" action={<Link className="text-terracotta-700 underline" to={`/staff/${role}/today`}>Back to Today</Link>} />;
   const m = s.members.find((x) => x.id === v.memberId)!;
-  const canEdit = can(role, 'visit_stations') && v.completeness !== 'passed';
+  // Booked for another day (opened from the MA's list after the Coach approved the wording): look, don't enter.
+  const notYet = !ops.visitStarted(v) && v.at.slice(0, 10) !== s.now.slice(0, 10);
+  const canEdit = can(role, 'visit_stations') && v.completeness !== 'passed' && !notYet;
   const results = s.results.filter((r) => r.visitId === v.id);
   const st = stationOf(active);
   const scores = scoreByPanel(results);
@@ -56,7 +58,8 @@ export default function VisitStations() {
           {v.completeness === 'passed' ? <Chip tone="ok"><Check size={13} aria-hidden="true" /> Completeness passed</Chip> : <Chip tone="info">Tests in clinic order</Chip>}
           </span>
         </header>
-        {!canEdit && v.completeness !== 'passed' && <p className="mb-4 rounded-lg bg-info-bg px-4 py-2 text-sm text-info-fg">Read only: the MA enters the test results.</p>}
+        {notYet && <p className="mb-4 rounded-lg bg-info-bg px-4 py-2 text-sm text-info-fg">Booked for {fmtDate(v.at)} at {fmtTime(v.at)}. Her report is ready for the visit; tests are entered on the day.</p>}
+        {!canEdit && !notYet && v.completeness !== 'passed' && <p className="mb-4 rounded-lg bg-info-bg px-4 py-2 text-sm text-info-fg">Read only: the MA enters the test results.</p>}
 
         <nav aria-label="Test stations" className="mb-4">
           <ol className="grid grid-cols-2 gap-2 md:grid-cols-4">

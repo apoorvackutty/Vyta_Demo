@@ -10,6 +10,7 @@ import { fillRequired } from '../lib/intakeFlow';
 import { fmtDateTime, fmtDate, toMs } from '../lib/time';
 import { baselineLabs, draftFindings, draftPlan, BASELINE_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
 import { STAFF } from '../data/seed';
+import { BASELINE_SUMMARY, wordingSlots, wordingChanged } from '../data/wording';
 import { canApprovePreReview, canPassCompleteness, unfilled } from './guards';
 import { STATIONS, stationOf, uploadResults, bandFor, resultId, FUNCTIONAL, functionalBand, type FunctionalId } from '../data/stations';
 
@@ -210,7 +211,7 @@ export function labsReceived(d: DemoData, visitId: string, byId: string) {
   if (!d.reports.some((r) => r.memberId === v.memberId && r.kind === 'baseline')) {
     d.reports.push({
       id: `r-${v.memberId}-baseline`, memberId: v.memberId, kind: 'baseline', version: 1, status: 'building',
-      scores: { ...BASELINE_SCORES }, focusAreas: [...BASELINE_FOCUS], findings: [], plan: [], protocol: PROTOCOL_NAME,
+      scores: { ...BASELINE_SCORES }, focusAreas: [...BASELINE_FOCUS], findings: [], plan: [], protocol: PROTOCOL_NAME, summary: BASELINE_SUMMARY,
       building: { kind: 'draft', startedAt: d.now },
     });
     log(d, v.memberId, 'system', 'draft_building', `Building draft HEAL plan from the ${PROTOCOL_NAME.toLowerCase()}`);
@@ -328,15 +329,48 @@ export function sendBackDraft(d: DemoData, reportId: string, reason: string, byI
   refreshStep(d, r.memberId);
 }
 
-// ---------- Coach wording review (C1, task 18). Scenario 4 uses it to move the draft on. ----------
+// ---------- Coach wording review (C1). Member-facing text only; clinical fields stay locked. ----------
+export function editWording(d: DemoData, reportId: string, key: string, text: string, byId: string) {
+  const r = report(d, reportId);
+  const slot = wordingSlots(r).find((x) => x.key === key);
+  if (!slot || r.status !== 'pre_reviewed') return;
+  const next = text.trim();
+  const before = r.wordingEdits?.[key] ?? slot.original;
+  if (!next || next === before) return;
+  r.wordingEdits = { ...(r.wordingEdits ?? {}) };
+  if (next === slot.original) delete r.wordingEdits[key];
+  else r.wordingEdits[key] = next;
+  log(d, r.memberId, byId, 'wording_edit', next === slot.original ? `${slot.label}: back to the original wording` : `${slot.label} reworded: "${next}"`);
+}
+
+// Approval writes the Coach's versions into the report, then the visit is booked so the MA has it.
 export function approveWording(d: DemoData, reportId: string, byId: string): boolean {
   const r = report(d, reportId);
   if (r.status !== 'pre_reviewed') return false;
+  const changed = wordingChanged(r);
+  for (const slot of changed) {
+    const text = r.wordingEdits![slot.key];
+    if (slot.key === 'summary') r.summary = text;
+    else if (slot.key.startsWith('focus-')) r.focusAreas[Number(slot.key.slice(6))] = text;
+    else { const item = r.plan.find((i) => `purpose-${i.id}` === slot.key); if (item) item.purpose = text; }
+  }
+  delete r.wordingEdits;
   r.status = 'ready_for_visit';
   d.approvals.push({ id: id(d, 'ap'), gate: 'coach_wording', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'approved', byId, at: d.now });
-  log(d, r.memberId, byId, 'approval', `Coach wording review approved · v${r.version} · ${staffName(byId)}. Ready for Your Vyta Day`);
+  log(d, r.memberId, byId, 'approval', `Coach wording review approved · v${r.version} · ${staffName(byId)}${changed.length ? ` · ${changed.length} sentence${changed.length > 1 ? 's' : ''} reworded` : ''}. Ready for Your Vyta Day`);
   refreshStep(d, r.memberId);
+  bookVytaDayVisit(d, r.memberId, 'system');
   return true;
+}
+
+// "Send back to NP – clinical change": the draft returns to pre-review with the Coach's note. Her rewording so far is kept.
+export function sendBackWording(d: DemoData, reportId: string, note: string, byId: string) {
+  const r = report(d, reportId);
+  if (r.status !== 'pre_reviewed' || !note.trim()) return;
+  d.approvals.push({ id: id(d, 'ap'), gate: 'coach_wording', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'sent_back', reason: note.trim(), byId, at: d.now });
+  r.status = 'draft';
+  log(d, r.memberId, byId, 'sent_back', `Wording review sent back to the NP by ${staffName(byId)} for a clinical change: "${note.trim()}"`);
+  refreshStep(d, r.memberId);
 }
 
 // ---------- Your Vyta Day: MA stations (MA1, MA3) ----------

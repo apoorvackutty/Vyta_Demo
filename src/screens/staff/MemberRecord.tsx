@@ -25,6 +25,9 @@ const TAB_ROLES: Record<Tab, StaffRole[]> = {
   overview: ['guide', 'ma', 'np', 'coach'], timeline: ['guide', 'ma', 'np', 'coach'], forms: ['guide', 'np'], intake: ['guide', 'np'],
   results: ['np', 'ma'], report: ['np', 'coach', 'guide'], notes: ['np', 'coach', 'guide'], orders: ['np', 'ma'], sage: ['guide', 'np'],
 };
+const GATE_WORDS: Record<string, string> = {
+  np_pre_review: 'NP pre-review', coach_wording: 'Coach wording review', completeness: 'Completeness check', np_final_review: 'NP final review', release: 'Release',
+};
 const STATUS_WORDS: Record<string, string> = {
   building: 'Draft building', draft: 'Waiting on NP pre-review', pre_reviewed: 'Waiting on Coach wording review', wording_checked: 'Wording checked',
   ready_for_visit: 'Ready for Your Vyta Day', final_review: 'Final review', released: 'Released', withdrawn: 'Withdrawn',
@@ -243,6 +246,7 @@ export default function MemberRecord() {
                     <Chip tone={report.status === 'draft' || report.status === 'pre_reviewed' ? 'watch' : report.status === 'building' ? 'info' : 'ok'}>{STATUS_WORDS[report.status]}</Chip>
                     {can(role, 'pre_review') && report.status !== 'building' && <ActingNote text={actingAs(role, 'pre_review')} />}
                     {can(role, 'pre_review') && report.status !== 'building' && <Button size="sm" variant={report.status === 'draft' ? 'primary' : 'secondary'} onClick={() => nav(`/staff/${role}/pre-review/${m.id}`)}>{report.status === 'draft' ? 'Pre-review' : 'View draft'}</Button>}
+                    {(role === 'coach' || isSuperAdmin(role)) && !['building', 'draft'].includes(report.status) && <Button size="sm" variant={report.status === 'pre_reviewed' ? 'primary' : 'secondary'} onClick={() => nav(`/staff/${role}/wording/${m.id}`)}>{report.status === 'pre_reviewed' ? 'Review wording' : 'View wording'}</Button>}
                   </div>
                 </div>
                 <div>
@@ -254,7 +258,7 @@ export default function MemberRecord() {
                         {s.approvals.filter((a) => a.reportId === report.id).map((a) => (
                           <li key={a.id} className="flex flex-wrap gap-x-2">
                             <span className="font-medium text-plum-900">v{a.reportVersion}</span>
-                            <span className="text-plum-900">{a.outcome === 'approved' ? 'Pre-review approved' : `Sent back: "${a.reason}"`}</span>
+                            <span className="text-plum-900">{GATE_WORDS[a.gate] ?? a.gate} {a.outcome === 'approved' ? 'approved' : `sent back: "${a.reason}"`}</span>
                             <span className="text-muted">· {staffName(a.byId)} · {fmtDateTime(a.at)}</span>
                           </li>
                         ))}

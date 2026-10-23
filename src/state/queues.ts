@@ -98,6 +98,13 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
             : { label: 'Open', action: { type: 'open_record', memberId: m.id } },
         });
       }
+      // Booked once the Coach approves the wording (C1), so the MA can see what's coming before the day.
+      if (!visitStarted(v) && toMs(v.at.slice(0, 10)) > toMs(d.now.slice(0, 10))) items.push({
+        key: `vyta-day-upcoming-${v.id}`, memberId: m.id, category: 'visits', roles: ['ma'],
+        label: `Your Vyta Day booked · ${fmtDate(v.at)}`, reason: `${fmtTime(v.at)} · report ready · tests: ${STATIONS.map((x) => x.label).join(' · ')}`,
+        ageLabel: '—', priority: 3,
+        primary: { label: 'Open visit', action: { type: 'start_visit', visitId: v.id } },
+      });
       if (v.completeness !== 'passed' && canPassCompleteness(v, d.results).ok) items.push({
         key: `completeness-${v.id}`, memberId: m.id, category: 'visits', roles: ['ma', 'np'],
         label: 'Completeness check', reason: 'Every test is in or skipped with a reason · owner: MA or NP (to confirm)', ageLabel: '—', priority: 1,
@@ -142,7 +149,7 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
           key: `wording-${r.id}`, memberId: m.id, category: 'reviews', roles: ['coach'],
           label: 'Wording review', reason: `Draft v${r.version} pre-reviewed by the NP · member-facing text only`,
           ageLabel: ageLabel(ap?.at ?? d.now, d.now), priority: 1,
-          primary: { label: 'Open', action: { type: 'open_record', memberId: m.id } },
+          primary: { label: 'Review wording', action: { type: 'wording_review', memberId: m.id } },
         });
       }
     }

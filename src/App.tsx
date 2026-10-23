@@ -11,6 +11,7 @@ import MemberRecord from './screens/staff/MemberRecord';
 import Onboard from './screens/staff/Onboard';
 import PreReview from './screens/staff/PreReview';
 import VisitStations from './screens/staff/VisitStations';
+import WordingReview from './screens/staff/WordingReview';
 import NotFound from './screens/staff/NotFound';
 import { StaffSignIn } from './screens/SignIn';
 import MemberApp from './screens/member/MemberApp';
@@ -30,6 +31,7 @@ function StaffRoutes() {
           <Route path="/staff/:role/onboard/:id" element={<Onboard />} />
           <Route path="/staff/:role/pre-review/:id" element={<PreReview />} />
           <Route path="/staff/:role/visit/:visitId" element={<VisitStations />} />
+          <Route path="/staff/:role/wording/:id" element={<WordingReview />} />
           <Route path="/" element={<Navigate to={`/staff/${urlRole}/today`} replace />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

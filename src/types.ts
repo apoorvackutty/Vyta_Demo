@@ -104,6 +104,21 @@ export interface SafetyFlag {
   severity: 'urgent' | 'review';
   status: 'open' | 'escalated' | 'closed';
   raisedAt: string;
+  // G6 / N7: what the Guide and NP did about it, in order. Optional so older saved demos still load.
+  actions?: FlagAction[];
+  outcome?: string;
+  closedAt?: string;
+  closedById?: string;
+}
+export interface FlagAction { at: string; byId: string; kind: 'call' | 'message' | 'escalate' | 'reply' | 'order_labs' | 'adjust_plan' | 'note' | 'close'; note: string }
+
+// M10 SAGE (scripted, TRD §4). Staff see every turn (PRD S2).
+export interface SageMessage { id: string; memberId: string; from: 'member' | 'sage'; text: string; at: string; citation?: string; flagged?: boolean }
+
+// N6 Orders: one line per accepted plan item, red until placed (PRD V9).
+export interface Order {
+  id: string; memberId: string; reportId: string; planItemId: string; item: string;
+  supplier: NonNullable<PlanItem['supplier']>; status: 'open' | 'placed'; createdAt: string; placedById?: string; placedAt?: string;
 }
 
 export interface FollowUp {
@@ -168,7 +183,13 @@ export type QueueAction =
   | { type: 'mark_drawn'; visitId: string }
   | { type: 'labs_received'; visitId: string }
   | { type: 'pre_review'; memberId: string }
-  | { type: 'start_visit'; visitId: string };
+  | { type: 'start_visit'; visitId: string }
+  | { type: 'wording_review'; memberId: string }
+  | { type: 'final_review'; memberId: string }
+  | { type: 'present'; memberId: string }
+  | { type: 'release'; memberId: string }
+  | { type: 'place_order'; orderId: string }
+  | { type: 'open_flag'; flagId: string };
 
 // ---------- Results, report and plan (SCHEMA §1) ----------
 export type Band =
@@ -186,6 +207,8 @@ export interface Result {
   source: string; // "Lab report p.3" or "InBody scan"
   skipped?: { reason: string; byId: string; at: string };
   excludedFromScore?: boolean; // skipped tests are left out of scores, never counted as zero
+  excludedReason?: string;     // N3: the NP left this value out of her scores
+  corrected?: { from: number | string | null; reason: string; byId: string; at: string }; // N3: the NP corrected the value
   // Your Vyta Day values: where each one came from, and whether the MA has checked it against the printout.
   origin?: ResultOrigin;
   checked?: boolean;
@@ -217,6 +240,12 @@ export interface Report {
   protocol: string; // template the draft started from
   builtAt?: string;
   building?: { kind: 'draft' | 'rebuild'; reason?: string; startedAt: string }; // simulated engine run (TRD §4)
+  summary?: string;                       // opening line of her report, member-facing
+  wordingEdits?: Record<string, string>;  // C1: the Coach's versions, keyed by wording slot, applied on approval
+  preReviewScores?: Scores;               // scores as the NP saw them at pre-review (labs only), for the N3 diff
+  finalReviewedAt?: string; finalReviewedById?: string; // N3 done, results conversation can start
+  releasedAt?: string; releasedById?: string;
+  nextDayCallAt?: string;                 // G1 next-day call logged
 }
 
 export interface Finding {
@@ -224,6 +253,7 @@ export interface Finding {
   resultId: string;
   summary: string;
   suggested?: 'treat' | 'refer' | 'monitor' | 'dismiss'; // from the protocol; the NP still decides
+  fromVytaDay?: boolean; // new since pre-review: raised by a Your Vyta Day test
   decision?: 'treat' | 'refer' | 'monitor' | 'dismiss';
   note?: string;
   decidedById?: string;
@@ -250,6 +280,9 @@ export interface PlanItem {
   sideNote?: string;
   removed?: boolean;
   needsConsentFormId?: string;
+  memberChoice?: 'accept' | 'decline' | 'defer'; // N4: what she chose in the results conversation
+  choiceReason?: string;
+  consentAssignmentId?: string; // the consent pushed to her phone for this item
   supplier?: 'compounding' | 'retail' | 'fullscript' | 'peptide_supplier';
 }
 
