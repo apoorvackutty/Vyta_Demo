@@ -3,6 +3,8 @@ import { createContext, useContext, useRef, useState, type CSSProperties, type R
 import { clsx } from 'clsx';
 import { Home as HomeIcon, ClipboardCheck, FileText, Sparkles, Menu, ChevronLeft, ChevronRight, Check, Bell, X, Lock, Droplet, CalendarDays, LogOut, AlertCircle } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
+import { MEMBER_ID, NavCtx, useNavigate, Top } from './memberKit';
+import { VytaDayAgenda, ReportScreen, ReportSectionScreen, PlanScreen, SageScreen, ReleasedHome, DayCard } from './afterVisit';
 import { Avatar, Button, Chip, ProgressBar, inputCls } from '../../components/ui';
 import { MemberSignIn } from '../SignIn';
 import { useAnnouncePage } from '../../components/shell';
@@ -16,11 +18,6 @@ import { fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { nextSlots, type SlotKind } from '../../lib/slots';
 import type { IntakeQuestion, IntakeValue } from '../../types';
 
-const MEMBER_ID = 'm-testelle';
-
-// A tiny in-app router: React Router can't nest a second router inside the staff one.
-const NavCtx = createContext<{ path: string; go: (p: string) => void }>({ path: '/home', go: () => {} });
-function useNavigate() { return useContext(NavCtx).go; }
 
 function screenFor(path: string): ReactNode {
   const [, a, b] = path.split('/');
@@ -31,9 +28,10 @@ function screenFor(path: string): ReactNode {
     case 'intake': return b ? <IntakeSectionView key={b} sid={b} /> : <Intake />;
     case 'blood-draw': return <BloodDraw />;
     case 'status': return <Status />;
-    case 'plan': return <Locked title="My plan" body="Your plan appears here after Your Vyta Day, once your nurse practitioner has gone through it with you and approved it." />;
-    case 'report': return <Locked title="Report" body="Your Vyta Health Assessment appears here on Your Vyta Day, after your nurse practitioner reviews it with you." />;
-    case 'sage': return <Sage />;
+    case 'today': return <VytaDayAgenda />;
+    case 'plan': return <PlanScreen />;
+    case 'report': return b ? <ReportSectionScreen id={b} /> : <ReportScreen />;
+    case 'sage': return <SageScreen />;
     case 'more': return <More />;
     case 'thanks': return <Thanks kind={b} />;
     case 'home': case '': case undefined: return <Home />;
@@ -85,16 +83,6 @@ function TabBar() {
   );
 }
 
-function Top({ title, back }: { title: string; back?: string }) {
-  const nav = useNavigate();
-  return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b border-line bg-cream-200/95 px-3 backdrop-blur">
-      {back && <button aria-label="Back" onClick={() => nav(back)} className="flex h-11 w-11 items-center justify-center rounded-full text-plum-700"><ChevronLeft size={22} /></button>}
-      <h1 className={clsx('font-display text-2xl font-semibold text-plum-700', !back && 'pl-2')}>{title}</h1>
-    </header>
-  );
-}
-
 function useMember() {
   const s = useDemo();
   const m = s.members.find((x) => x.id === MEMBER_ID)!;
@@ -132,8 +120,11 @@ function Home() {
       </div>
     );
   }
-  const signed = consents.filter((c) => c.status === 'signed').length;
-  const steps = [signed === consents.length && consents.length > 0, intake?.status === 'signed', draw?.status === 'done', false];
+  if (['first_30', 'ongoing', 'renewal'].includes(m.phase) && s.reports.some((r) => r.memberId === MEMBER_ID && r.status === 'released')) return <ReleasedHome />;
+  // First steps count the onboarding consents; treatment consents pushed on Your Vyta Day surface on the day card.
+  const onboarding = consents.filter((c) => FORMS.find((f) => f.id === c.formId)?.kind !== 'treatment_consent');
+  const signed = onboarding.filter((c) => c.status === 'signed').length;
+  const steps = [signed === onboarding.length && onboarding.length > 0, intake?.status === 'signed', draw?.status === 'done', false];
   const doneCount = steps.filter(Boolean).length;
   const guide = STAFF.find((x) => x.id === m.guideId)!;
   return (
@@ -153,13 +144,15 @@ function Home() {
         </div>
       )}
 
+      <DayCard />
+
       <section className="mx-4 mt-4 rounded-mcard border border-line bg-paper shadow-card" aria-label="Your first steps">
         <div className="px-4 pt-4">
           <div className="flex items-baseline justify-between"><h2 className="text-[17px] font-semibold text-plum-900">Your first steps</h2><span className="text-[13px] text-muted">{doneCount} of 4 done</span></div>
           <ProgressBar value={doneCount / 4} label="First steps" className="mt-2" />
         </div>
         <ul className="divide-y divide-line">
-          <Row to="/forms" icon={<FileText size={18} />} title="Sign your consents" sub={`${signed} of ${consents.length} signed`} done={steps[0]} />
+          <Row to="/forms" icon={<FileText size={18} />} title="Sign your consents" sub={`${signed} of ${onboarding.length} signed`} done={steps[0]} />
           <Row to="/intake" icon={<ClipboardCheck size={18} />} title="Complete your intake" sub={intake?.status === 'signed' ? 'Done, thank you' : `${Math.round((intake?.progress ?? 0) * 100)}% · about 25 minutes in total`} done={steps[1]} />
           <Row to="/blood-draw" icon={<Droplet size={18} />} title="Blood draw" sub={draw ? (draw.status === 'done' ? `Done ${fmtDate(draw.at)}` : `${fmtDateTime(draw.at)} · fast 12 h`) : 'Being booked'} done={steps[2]} />
           <Row to="/status" icon={<CalendarDays size={18} />} title="Your Vyta Day" sub={draw?.labsReceivedAt ? `${fmtDate(m.vytaDayAt!)} · tests, results and your plan` : "We'll book it once your labs are back"} />
@@ -329,7 +322,7 @@ function FormView({ aid }: { aid: string }) {
               {!read && name.trim().length < 2 ? 'Tick the box and add your name to sign.' : !read ? 'Tick the box above to sign.' : 'Add your name to sign.'}
             </p>
           )}
-          <Button size="lg" className="w-full" disabled={!read || name.trim().length < 2} onClick={() => { s.run((d) => ops.signForm(d, a.id, name.trim()), 'Signed · thank you'); nav(lastOne ? '/thanks/consents' : '/forms'); }}>Sign</Button>
+          <Button size="lg" className="w-full" disabled={!read || name.trim().length < 2} onClick={() => { s.run((d) => ops.signForm(d, a.id, name.trim()), 'Signed · thank you'); nav(f.kind === 'treatment_consent' ? (m.phase === 'vyta_day' ? '/today' : '/home') : lastOne ? '/thanks/consents' : '/forms'); }}>Sign</Button>
         </div>
       )}
     </div>
@@ -833,19 +826,6 @@ function Locked({ title, body, bare }: { title: string; body: string; bare?: boo
         <Lock size={18} className="text-muted" />
         <p className="text-[15px] text-plum-900">{body}</p>
       </div>
-    </div>
-  );
-}
-
-function Sage() {
-  return (
-    <div className="pb-6">
-      <Top title="SAGE" />
-      <div className="m-4 rounded-mcard border border-line bg-paper p-4 text-[14px] text-plum-900 shadow-card">
-        <p><span className="mr-2 rounded bg-plum-100 px-1.5 py-0.5 text-xs font-semibold text-plum-700">AI</span>I'm SAGE, an AI. I can explain your report once it's ready. I can't give medical advice.</p>
-        <p className="mt-2 font-semibold text-danger-fg">Not for emergencies: call 911.</p>
-      </div>
-      <p className="px-6 text-center text-[13px] text-muted">Your report arrives on Your Vyta Day. Then you can ask me anything about it.</p>
     </div>
   );
 }
