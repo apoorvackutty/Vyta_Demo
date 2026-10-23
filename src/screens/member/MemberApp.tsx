@@ -1,5 +1,5 @@
 // Member app (phone). Uses a small in-app router so it can sit next to the staff view.
-import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { clsx } from 'clsx';
 import { Home as HomeIcon, ClipboardCheck, FileText, Sparkles, Menu, ChevronLeft, ChevronRight, Check, Bell, X, Lock, Droplet, CalendarDays, LogOut, AlertCircle } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
@@ -11,6 +11,7 @@ import { PHASES, PROGRAM_LABEL, PROGRAM_ORDER, ProgramLadder, journeyLabel, phas
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
 import { GRID_OPTIONS } from '../../lib/intakeFormat';
+import { GRID_SHORT, ORDERED_SINGLE, TEXT_HINTS, hasAnswer, isShown, stopLabel, toggleMulti, FOLLOW_UPS } from '../../lib/intakeFlow';
 import { fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { nextSlots, type SlotKind } from '../../lib/slots';
 import type { IntakeQuestion, IntakeValue } from '../../types';
@@ -382,8 +383,11 @@ function IntakeSectionView({ sid }: { sid: string }) {
   const [check, setCheck] = useState<'none' | 'blanks' | 'safety'>('none');
   if (!sec) return <MemberNotFound back="/intake" />;
   const set = (id: string, v: IntakeValue) => { setAns((a) => ({ ...a, [id]: v })); if (check === 'safety') setCheck('none'); };
+  // Follow-ups stay hidden until the answer they hang off makes them relevant.
+  const shown = sec.questions.filter((q) => isShown(q, ans));
+  const answered = shown.filter((q) => hasAnswer(ans[q.id])).length;
   // Free-text questions are follow-ups ("if yes, tell us more"), so only choice questions count as blank.
-  const blank = sec.questions.filter((q) => q.type !== 'text' && !hasAnswer(ans[q.id]));
+  const blank = shown.filter((q) => q.type !== 'text' && !hasAnswer(ans[q.id]));
   const safetyBlank = blank.filter((q) => q.safety);
   const scrollTo = (qid?: string) => qid && document.getElementById(`q-${qid}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
   const advance = () => {
@@ -406,10 +410,15 @@ function IntakeSectionView({ sid }: { sid: string }) {
         />
       </div>
       <div className="space-y-4 p-4">
-        {sec.questions.map((q) => <QuestionInput key={q.id} q={q} value={ans[q.id]} onChange={(v) => set(q.id, v)}
+        {shown.map((q, i) => <QuestionInput key={q.id} q={q} value={ans[q.id]} onChange={(v) => set(q.id, v)}
+          pos={`Question ${i + 1} of ${shown.length}`} followUp={!!FOLLOW_UPS[q.id]}
           flag={check === 'safety' && q.safety && !hasAnswer(ans[q.id]) ? 'Please answer this one' : check === 'blanks' && blank.includes(q) ? 'Not answered yet' : undefined} />)}
       </div>
       <div className="sticky bottom-0 border-t border-line bg-cream-200/95 p-4 backdrop-blur">
+        <div className="mb-3 flex items-center gap-3">
+          <ProgressBar value={shown.length ? answered / shown.length : 0} label="Answered in this section" className="flex-1" />
+          <p className="shrink-0 text-[13px] text-muted">{answered} of {shown.length} answered</p>
+        </div>
         {check === 'safety' && (
           <p role="alert" className="mb-3 flex gap-2 rounded-lg bg-danger-bg p-3 text-[13px] text-danger-fg"><AlertCircle size={16} className="mt-0.5 shrink-0" />
             Please answer the {safetyBlank.length > 1 ? `${safetyBlank.length} safety questions` : 'safety question'}. They help your care team keep you safe.</p>
@@ -431,47 +440,128 @@ function IntakeSectionView({ sid }: { sid: string }) {
 
 function Pill({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" aria-pressed={selected} onClick={onClick} className={clsx('min-h-[44px] rounded-full border px-4 py-2 text-left text-[14px]', selected ? 'border-plum-700 bg-plum-700 text-paper' : 'border-line bg-paper text-plum-900')}>
-      {children}
+    <button type="button" aria-pressed={selected} onClick={onClick} className={clsx('inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-4 py-2 text-left text-[14px]', selected ? 'border-plum-700 bg-plum-700 text-paper' : 'border-line bg-paper text-plum-900')}>
+      {selected && <Check size={14} aria-hidden className="shrink-0" />}{children}
     </button>
   );
 }
 
-function hasAnswer(v: IntakeValue | undefined) {
-  if (v === undefined || v === null || v === '') return false;
-  if (Array.isArray(v)) return v.length > 0;
-  if (typeof v === 'object') return Object.keys(v).length > 0;
-  return true;
+// One row of equal-width choices (Yes / No, Rarely … 5+). Real radios, so arrow keys move between them.
+function Segmented({ name, options, labels, value, onChange, srSuffix }: { name: string; options: string[]; labels?: string[]; value: string | undefined; onChange: (v: string) => void; srSuffix?: string }) {
+  return (
+    <div className="flex gap-1 rounded-xl border border-line bg-cream-100 p-1">
+      {options.map((o, i) => (
+        <label key={o} className="flex-1">
+          <input type="radio" name={name} value={o} checked={value === o} onChange={() => onChange(o)} className="peer sr-only" />
+          <span className={clsx('flex min-h-[44px] cursor-pointer items-center justify-center gap-1 rounded-lg px-1.5 text-center text-[14px] leading-tight peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-terracotta-500',
+            value === o ? 'bg-plum-700 font-medium text-paper' : 'text-plum-900')}>
+            {value === o && <Check size={14} aria-hidden className="shrink-0" />}{labels?.[i] ?? o}{srSuffix && <span className="sr-only"> {srSuffix}</span>}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
 }
 
-function QuestionInput({ q, value, onChange, flag }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void; flag?: string }) {
-  const label = <p className="mb-2 text-[15px] font-medium text-plum-900">{q.text}</p>;
-  const box = (c: ReactNode) => (
-    <fieldset id={`q-${q.id}`} className={clsx('scroll-mt-20 rounded-mcard bg-paper p-4 shadow-card', flag && 'ring-2 ring-watch-fg')}>
-      <legend className="sr-only">{q.text}</legend>{label}{c}
-      {flag && <p className="mt-2 text-[13px] font-medium text-watch-fg">{flag}</p>}
-    </fieldset>
+// Full-width radio rows for choices too long to sit side by side.
+function OptionList({ name, options, value, onChange }: { name: string; options: string[]; value: string | undefined; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-2">
+      {options.map((o) => (
+        <label key={o} className="block">
+          <input type="radio" name={name} value={o} checked={value === o} onChange={() => onChange(o)} className="peer sr-only" />
+          <span className={clsx('flex min-h-[48px] cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-2.5 text-[15px] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-terracotta-500',
+            value === o ? 'border-plum-700 bg-plum-100 text-plum-900' : 'border-line bg-paper text-plum-900')}>
+            <span aria-hidden className={clsx('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2', value === o ? 'border-plum-700 bg-plum-700 text-paper' : 'border-muted')}>{value === o && <Check size={12} strokeWidth={3} />}</span>
+            {o}
+          </span>
+        </label>
+      ))}
+    </div>
   );
-  if (q.type === 'single') return box(<div className="flex flex-wrap gap-2">{q.options!.map((o) => <Pill key={String(o)} selected={value === o} onClick={() => onChange(String(o))}>{o}</Pill>)}</div>);
+}
+
+// An accessible slider over ordered stops. Every stop has a visible label; until she picks, no thumb shows and nothing is saved.
+function StepSlider({ id, stops, index, onPick, valueText, ends }: { id: string; stops: string[]; index: number | undefined; onPick: (i: number) => void; valueText: (i: number) => string; ends?: [string, string] }) {
+  const n = stops.length;
+  const empty = index === undefined;
+  const pct = empty ? 0 : (index / (n - 1)) * 100;
+  // Inset the track so each stop's thumb position sits over the centre of its label column.
+  const inset = `calc(100% / ${2 * n} - 14px)`;
+  const commit = (e: { currentTarget: HTMLInputElement }) => onPick(Number(e.currentTarget.value));
+  return (
+    <div>
+      <p id={`${id}-val`} aria-hidden className={clsx('mb-1 min-h-[24px] text-[16px]', empty ? 'text-muted' : 'font-semibold text-plum-700')}>
+        {empty ? 'Slide or tap to answer' : valueText(index)}
+      </p>
+      <input id={`${id}-in`} type="range" min={0} max={n - 1} step={1} value={empty ? 0 : index}
+        aria-labelledby={`${id}-label`} aria-valuetext={empty ? 'Not answered yet' : valueText(index)}
+        data-empty={empty || undefined} onChange={commit} onClick={commit}
+        className="vy-range block" style={{ marginInline: inset, width: `calc(100% - 2 * (${inset}))`, '--fill': `${pct}%` } as CSSProperties} />
+      <div aria-hidden className="grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+        {stops.map((s, i) => (
+          <div key={i} onClick={() => onPick(i)} className={clsx('flex min-h-[44px] cursor-pointer justify-center px-0.5 pt-1 text-center text-[12px] leading-tight', index === i ? 'font-semibold text-plum-700' : 'text-muted')}>{s}</div>
+        ))}
+      </div>
+      {ends && <div aria-hidden className="flex justify-between text-[12px] text-muted"><span>{ends[0]}</span><span>{ends[1]}</span></div>}
+    </div>
+  );
+}
+
+function QuestionInput({ q, value, onChange, flag, pos, followUp }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void; flag?: string; pos?: string; followUp?: boolean }) {
+  const labelId = `q-${q.id}-label`;
+  const box = (c: ReactNode, asGroup = true) => {
+    const Wrap = asGroup ? 'fieldset' : 'div';
+    return (
+      <Wrap id={`q-${q.id}`} {...(asGroup ? { 'aria-labelledby': labelId } : {})} className={clsx('scroll-mt-20 rounded-mcard bg-paper p-4 shadow-card', followUp && 'ml-4 border-l-4 border-plum-100', flag && 'ring-2 ring-watch-fg')}>
+        {pos && <p className="mb-1 text-[12px] font-medium uppercase tracking-wide text-muted">{pos}{followUp ? ' · follow-up' : ''}</p>}
+        {asGroup ? <p id={labelId} className="mb-3 text-[15px] font-medium text-plum-900">{q.text}</p> : <label id={labelId} htmlFor={`q-${q.id}-in`} className="mb-3 block text-[15px] font-medium text-plum-900">{q.text}</label>}
+        {c}
+        {flag && <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-watch-fg"><AlertCircle size={14} aria-hidden />{flag}</p>}
+      </Wrap>
+    );
+  };
+  const opts = (q.options ?? []).map(String);
+  const str = typeof value === 'string' ? value : undefined;
+  if (q.type === 'single') {
+    if (ORDERED_SINGLE.has(q.id)) {
+      const i = str === undefined ? -1 : opts.indexOf(str);
+      return box(<StepSlider id={`q-${q.id}`} stops={opts.map(stopLabel)} index={i < 0 ? undefined : i} onPick={(k) => onChange(opts[k])} valueText={(k) => opts[k]} />, false);
+    }
+    if (opts.length <= 3 && opts.every((o) => o.length <= 14)) return box(<Segmented name={q.id} options={opts} value={str} onChange={onChange} />);
+    return box(<OptionList name={q.id} options={opts} value={str} onChange={onChange} />);
+  }
   if (q.type === 'multi') {
     const arr = Array.isArray(value) ? value : [];
-    return box(<div className="flex flex-wrap gap-2">{q.options!.map((o) => { const v = String(o); const on = arr.includes(v); return <Pill key={v} selected={on} onClick={() => onChange(on ? arr.filter((x) => x !== v) : [...arr, v])}>{v}</Pill>; })}</div>);
+    return box(<>
+      {!/choose/i.test(q.text) && <p className="-mt-2 mb-2 text-[13px] text-muted">Choose all that apply</p>}
+      <div className="flex flex-wrap gap-2">{opts.map((v) => <Pill key={v} selected={arr.includes(v)} onClick={() => onChange(toggleMulti(arr, v))}>{v}</Pill>)}</div>
+    </>);
   }
   if (q.type === 'scale') {
     const [lo, hi] = q.options as number[];
     const nums = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
-    return box(<div className="flex flex-wrap gap-1.5">{nums.map((n) => (
-      <button key={n} type="button" aria-pressed={value === n} onClick={() => onChange(n)} className={clsx('h-11 w-[2.6rem] rounded-lg border text-[14px] tabular-nums', value === n ? 'border-plum-700 bg-plum-700 text-paper' : 'border-line bg-paper text-plum-900')}>{n}</button>
-    ))}</div>);
+    const i = typeof value === 'number' ? nums.indexOf(value) : -1;
+    return box(<StepSlider id={`q-${q.id}`} stops={nums.map(String)} index={i < 0 ? undefined : i} onPick={(k) => onChange(nums[k])} valueText={(k) => `${nums[k]} out of ${hi}`} ends={['Low', 'High']} />, false);
   }
   if (q.type === 'grid') {
     const obj = (value && typeof value === 'object' && !Array.isArray(value)) ? value as Record<string, string> : {};
-    return box(<div className="space-y-3">{(q.options as string[]).map((row) => (
-      <div key={row}><p className="mb-1.5 text-[13px] text-muted">{row}</p><div className="flex flex-wrap gap-1.5">{GRID_OPTIONS.map((o) => <Pill key={o} selected={obj[row] === o} onClick={() => onChange({ ...obj, [row]: o })}>{o}</Pill>)}</div></div>
-    ))}</div>);
+    return box(<>
+      <p className="-mt-2 mb-3 text-[13px] text-muted">Days a week, for each</p>
+      <div className="space-y-3">{(q.options as string[]).map((row, r) => (
+        <fieldset key={row}>
+          <legend className="mb-1.5 text-[14px] text-plum-900">{row}</legend>
+          <Segmented name={`${q.id}-${r}`} options={GRID_OPTIONS} labels={GRID_SHORT} value={obj[row]} onChange={(o) => onChange({ ...obj, [row]: o })} srSuffix="days a week" />
+        </fieldset>
+      ))}</div>
+    </>);
   }
-  if (q.type === 'date') return box(<input type="date" aria-label={q.text} className={clsx(inputCls, 'h-12 text-[16px]')} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} />);
-  return box(<textarea aria-label={q.text} rows={2} className={clsx(inputCls, 'text-[16px]')} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} />);
+  if (q.type === 'date') return box(<input id={`q-${q.id}-in`} type="date" max={new Date().toISOString().slice(0, 10)} className={clsx(inputCls, 'h-12 text-[16px]')} value={str ?? ''} onChange={(e) => onChange(e.target.value)} />, false);
+  const h = TEXT_HINTS[q.id] ?? {};
+  const common = { id: `q-${q.id}-in`, placeholder: h.placeholder, autoComplete: h.autoComplete ?? 'off', value: str ?? '', className: clsx(inputCls, 'text-[16px]') };
+  return box(h.line
+    ? <input type="text" enterKeyHint="next" autoCapitalize="sentences" {...common} className={clsx(common.className, 'h-12')} onChange={(e) => onChange(e.target.value)} />
+    : <textarea rows={h.rows ?? 2} autoCapitalize="sentences" {...common} onChange={(e) => onChange(e.target.value)} />, false);
 }
 
 function BloodDraw() {
