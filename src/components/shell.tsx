@@ -161,7 +161,7 @@ export function PhoneFrame({ children }: { children: ReactNode }) {
   return (
     // Under 640 px the screen already is a phone, so the mock-up frame drops away and the app fills it.
     <div className="mx-auto w-full shrink-0 bg-cream-200 sm:w-[390px] sm:rounded-[44px] sm:border-[12px] sm:border-plum-900 sm:shadow-card">
-      <div className="relative h-[calc(100dvh-48px)] overflow-hidden bg-cream-200 sm:h-[820px] sm:rounded-[32px]">{children}</div>
+      <div className="relative h-[calc(100dvh-48px)] overflow-clip bg-cream-200 sm:h-[820px] sm:rounded-[32px]">{children}</div>
     </div>
   );
 }
