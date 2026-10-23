@@ -45,3 +45,14 @@ describe('intake and blood draw flow', () => {
     expect(getQueue(d, 'np').some((q) => q.key === `draft-${v.id}`)).toBe(true);
   });
 });
+
+describe('demo skip', () => {
+  it('skip to end keeps chosen answers and completes intake', () => {
+    const d = buildScenario('intake_stalled');
+    ops.skipIntakeToEnd(d, 'm-testelle', { Q49: 5 });
+    const a = d.assignments.find((x) => x.formId === 'f-intake')!;
+    expect(a.status).toBe('signed');
+    expect(d.intake['m-testelle'].Q49).toBe(5);
+    expect(d.intakeDone['m-testelle']).toHaveLength(7);
+  });
+});

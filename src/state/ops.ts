@@ -2,7 +2,7 @@
 import type {
   Member, FormAssignment, Visit, SafetyFlag, FollowUp, TimelineEvent, MemberNotice, IntakeValue, MenoStatus, Milestone,
 } from '../types';
-import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION } from '../data/seed';
+import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION, TESTELLE_INTAKE } from '../data/seed';
 import { INTAKE } from '../data/intake';
 import { fmtDateTime, fmtDate } from '../lib/time';
 
@@ -167,4 +167,15 @@ export function refreshStep(d: DemoData, memberId: string) {
   const intakePart = intake?.status === 'signed' ? 'Intake done' : `Intake ${pct}%`;
   const labsPart = draw?.labsReceivedAt ? 'labs received' : draw?.status === 'done' ? 'labs awaited' : 'blood draw booked';
   m.step = `${intakePart} · ${labsPart}`;
+}
+
+// Demo shortcut: keep every answer already chosen, fill the gaps with Testelle's sample answers, and finish all sections.
+export function skipIntakeToEnd(d: DemoData, memberId: string, current: Record<string, IntakeValue> = {}) {
+  const chosen = { ...(d.intake[memberId] ?? {}), ...current };
+  for (const sec of INTAKE) {
+    const answers = Object.fromEntries(
+      sec.questions.map((q) => [q.id, chosen[q.id] ?? TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined),
+    );
+    saveIntake(d, memberId, sec.id, answers, true);
+  }
 }

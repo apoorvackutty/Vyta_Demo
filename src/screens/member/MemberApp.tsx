@@ -260,6 +260,7 @@ function Intake() {
           <ProgressBar value={intake.progress ?? 0} label="Intake progress" className="mt-3" />
           <p className="mt-1.5 text-[13px] text-muted">{done.length} of {INTAKE.length} sections done</p>
           {next && <Button size="lg" className="mt-4 w-full" onClick={() => nav(`/intake/${next.id}`)}>{done.length || Object.keys(ans).length ? 'Pick up where you left off' : 'Start'}</Button>}
+          {next && <div className="mt-3"><DemoControls onSkip={() => s.run((d) => ops.skipIntakeToEnd(d, MEMBER_ID), 'Intake complete')} /></div>}
         </div>
         <ol className="mt-4 divide-y divide-line rounded-mcard bg-paper shadow-card">
           {INTAKE.map((sec, i) => {
@@ -296,7 +297,10 @@ function IntakeSectionView({ sid }: { sid: string }) {
       <Top title={`${idx + 1} of ${INTAKE.length}`} back="/intake" />
       <div className="px-4 pt-4">
         <h2 className="font-display text-[26px] font-semibold leading-tight text-plum-700">{sec.title}</h2>
-        <button className="mt-1 text-[12px] text-muted underline" onClick={() => setAns(Object.fromEntries(sec.questions.map((q) => [q.id, TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined)))}>Demo: fill sample answers</button>
+        <DemoControls
+          onFill={() => setAns((cur) => ({ ...Object.fromEntries(sec.questions.map((q) => [q.id, TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined)), ...Object.fromEntries(Object.entries(cur).filter(([, v]) => v !== undefined && v !== '')) }))}
+          onSkip={() => { s.run((d) => ops.skipIntakeToEnd(d, MEMBER_ID, ans), 'Intake complete'); nav('/intake'); }}
+        />
       </div>
       <div className="space-y-4 p-4">
         {sec.questions.map((q) => <QuestionInput key={q.id} q={q} value={ans[q.id]} onChange={(v) => set(q.id, v)} />)}
@@ -441,6 +445,17 @@ function More() {
       <ul className="m-4 divide-y divide-line rounded-mcard bg-paper shadow-card">
         {items.map(([l, to]) => <li key={to}><button onClick={() => nav(to)} className="flex min-h-[56px] w-full items-center justify-between px-4 text-left text-[15px] text-plum-900">{l}<ChevronRight size={18} className="text-muted" /></button></li>)}
       </ul>
+    </div>
+  );
+}
+
+// Presenter-only shortcuts, styled so they read as demo controls rather than product UI.
+function DemoControls({ onFill, onSkip }: { onFill?: () => void; onSkip: () => void }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-muted/40 px-2 py-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Demo</span>
+      {onFill && <button type="button" onClick={onFill} className="min-h-[32px] rounded-md px-2 text-[12px] text-plum-700 underline">Fill the rest of this section</button>}
+      <button type="button" onClick={onSkip} className="min-h-[32px] rounded-md px-2 text-[12px] text-plum-700 underline">Skip to the end</button>
     </div>
   );
 }
