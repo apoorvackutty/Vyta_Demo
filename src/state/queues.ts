@@ -4,6 +4,7 @@ import type { DemoData } from './ops';
 import { STATIC_TASKS } from '../data/seed';
 import { canApprovePreReview, canPassCompleteness } from './guards';
 import { visitStarted } from './ops';
+import { can, isSuperAdmin } from './permissions';
 import { STATIONS } from '../data/stations';
 import { ageLabel, daysBetween, fmtDateTime, fmtDate, fmtTime, toMs } from '../lib/time';
 
@@ -12,7 +13,7 @@ function snoozed(d: DemoData, taskKey: string) {
 }
 
 export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
-  const items: (QueueItem & { roles: StaffRole[] })[] = [];
+  const items: QueueItem[] = [];
 
   for (const f of d.flags.filter((x) => x.status !== 'closed')) {
     items.push({
@@ -92,7 +93,7 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
           label: `Your Vyta Day · ${fmtTime(v.at).replace(' am', '')}`,
           reason: started ? `${STATIONS.length - left.length} of ${STATIONS.length} tests in · next: ${left[0]?.label ?? 'completeness check'}` : `Tests: ${STATIONS.map((x) => x.label).join(' · ')}`,
           ageLabel: '—', priority: 1,
-          primary: role === 'ma' || role === 'admin'
+          primary: can(role, 'start_visit')
             ? { label: started ? 'Continue visit' : 'Start visit', action: { type: 'start_visit', visitId: v.id } }
             : { label: 'Open', action: { type: 'open_record', memberId: m.id } },
         });
@@ -153,14 +154,13 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
       key: t.id, memberId: t.memberId, category: t.category, roles: t.roles, label: t.label, reason: t.reason,
       ageLabel: t.ageLabel, priority: t.priority,
       primary: { label: 'Open', action: { type: 'open_record', memberId: t.memberId } },
-      secondary: t.roles.includes('guide') && role === 'guide' ? [{ label: 'Snooze', action: { type: 'snooze', memberId: t.memberId, taskKey: t.id } }] : undefined,
+      secondary: t.roles.includes('guide') && can(role, 'snooze') ? [{ label: 'Snooze', action: { type: 'snooze', memberId: t.memberId, taskKey: t.id } }] : undefined,
     });
   }
 
   return items
-    .filter((i) => role === 'admin' || i.roles.includes(role))
-    .sort((a, b) => a.priority - b.priority)
-    .map(({ roles, ...rest }) => rest);
+    .filter((i) => isSuperAdmin(role) || i.roles.includes(role))
+    .sort((a, b) => a.priority - b.priority);
 }
 
 export const CATEGORY_LABEL: Record<QueueCategory, string> = {
@@ -173,5 +173,5 @@ export const ROLE_TILES: Record<StaffRole, QueueCategory[]> = {
   ma: ['visits', 'labs', 'overdue'],
   np: ['safety', 'reviews', 'orders'],
   coach: ['reviews', 'engagement'],
-  admin: ['safety', 'overdue', 'visits', 'reviews', 'messages'],
+  admin: ['safety', 'onboard', 'overdue', 'forms', 'visits', 'labs', 'reviews', 'messages'],
 };

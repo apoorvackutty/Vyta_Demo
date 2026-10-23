@@ -6,6 +6,8 @@ import { getQueue } from '../queues';
 import { functionalBand, rangeBand, FUNCTIONAL } from '../../data/stations';
 import { scoreResults, scoreByPanel } from '../../lib/scores';
 import type { Result } from '../../types';
+import { can, actingAs } from '../permissions';
+import { STAFF_BY_ROLE } from '../../data/seed';
 
 const setup = () => {
   const d = buildScenario('vyta_day');
@@ -169,5 +171,56 @@ describe('Scores: a skipped test never counts as zero', () => {
     const without = scoreByPanel(d.results.filter((x) => x.visitId === v().id)).overall;
     ops.skipStation(d, v().id, 'shapescale', 'Scanner offline – reschedule at 3-month', 's-ma');
     expect(scoreByPanel(d.results.filter((x) => x.visitId === v().id)).overall).toBe(without);
+  });
+});
+
+describe('Super admin on Your Vyta Day', () => {
+  const ADMIN = STAFF_BY_ROLE.admin;
+
+  it('may take every MA visit action, labelled "Acting as MA"; other roles may not', () => {
+    for (const a of ['start_visit', 'visit_stations'] as const) {
+      expect(can('admin', a)).toBe(true);
+      expect(can('ma', a)).toBe(true);
+      expect(actingAs('admin', a)).toBe('Acting as MA');
+      expect(actingAs('ma', a)).toBeNull();
+      for (const r of ['guide', 'np', 'coach'] as const) expect(can(r, a)).toBe(false);
+    }
+  });
+
+  it('sees Start visit and gets the queue row labelled as the MA\'s', () => {
+    const { d } = setup();
+    const item = getQueue(d, 'admin').find((q) => q.label === 'Your Vyta Day · 8:30')!;
+    expect(item.primary?.label).toBe('Start visit');
+    expect(item.roles[0]).toBe('ma');
+    expect(getQueue(d, 'guide').find((q) => q.label === 'Your Vyta Day · 8:30')!.primary?.label).toBe('Open');
+  });
+
+  it('runs the whole visit, with every action recorded under her own staff id', () => {
+    const { d, v } = setup();
+    const before = d.timeline.length;
+    ops.startVisit(d, v().id, ADMIN);
+    ops.uploadStation(d, v().id, 'inbody', ADMIN);
+    ops.saveFunctional(d, v().id, SAMPLE, ADMIN);
+    ops.skipStation(d, v().id, 'shapescale', 'Scanner offline – reschedule at 3-month', ADMIN);
+    ops.uploadStation(d, v().id, 'vo2', ADMIN);
+    expect(ops.passCompleteness(d, v().id, ADMIN)).toBe(true);
+    const events = d.timeline.slice(before);
+    expect(events.length).toBe(6);
+    expect(events.every((e) => e.by === ADMIN)).toBe(true);
+    expect(events[events.length - 1].text).toContain('Quinn Harper');
+    expect(d.results.find((r) => r.panel === 'ShapeScale')!.skipped!.byId).toBe(ADMIN);
+    expect(d.approvals[d.approvals.length - 1]).toMatchObject({ gate: 'completeness', byId: ADMIN });
+    expect(getQueue(d, 'np').some((q) => q.label.startsWith('Final review'))).toBe(true);
+  });
+
+  it('is still blocked by the completeness guard and the functional entry check', () => {
+    const { d, v } = setup();
+    ops.uploadStation(d, v().id, 'inbody', ADMIN);
+    expect(ops.passCompleteness(d, v().id, ADMIN)).toBe(false);
+    expect(v().completeness).toBe('open');
+    expect(ops.saveFunctional(d, v().id, { ...SAMPLE, grip: 'abc' }, ADMIN)).toBe(false);
+    expect(v().stations!.functional).toBe('todo');
+    ops.skipStation(d, v().id, 'vo2', '   ', ADMIN);
+    expect(v().stations!.vo2).toBe('todo');
   });
 });

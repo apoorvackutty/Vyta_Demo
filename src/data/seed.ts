@@ -8,7 +8,7 @@ export const STAFF: Staff[] = [
   { id: 's-ma', name: 'Jordan Park', roles: ['ma'], title: 'Medical Assistant' },
   { id: 's-np', name: 'Dana Reyes', roles: ['np'], title: 'Nurse Practitioner' },
   { id: 's-coach', name: 'Sienna Clarke', roles: ['coach'], title: 'Wellness Coach' },
-  { id: 's-admin', name: 'Quinn Harper', roles: ['admin'], title: 'Clinic Admin' },
+  { id: 's-admin', name: 'Quinn Harper', roles: ['admin'], title: 'Clinic owner · Super admin' },
 ];
 
 export const STAFF_BY_ROLE: Record<string, string> = {

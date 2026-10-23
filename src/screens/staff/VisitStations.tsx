@@ -5,7 +5,8 @@ import { clsx } from 'clsx';
 import { ArrowLeft, Check, Circle, Clock, MinusCircle } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
-import { BandChip } from '../../components/domain';
+import { BandChip, ActingNote } from '../../components/domain';
+import { can, actingAs } from '../../state/permissions';
 import { Button, Card, Chip, Dialog, EmptyState, Field, inputCls, type Tone } from '../../components/ui';
 import { canPassCompleteness } from '../../state/guards';
 import { STATIONS, stationOf, SKIP_REASONS, UPLOADS, FUNCTIONAL, functionalBand, type FunctionalId } from '../../data/stations';
@@ -35,7 +36,7 @@ export default function VisitStations() {
   const [active, setActive] = useState<Station>(firstOpen ?? 'inbody');
   if (!v) return <EmptyState heading="h1" title="Visit not found" action={<Link className="text-terracotta-700 underline" to={`/staff/${role}/today`}>Back to Today</Link>} />;
   const m = s.members.find((x) => x.id === v.memberId)!;
-  const canEdit = (role === 'ma' || role === 'admin') && v.completeness !== 'passed';
+  const canEdit = can(role, 'visit_stations') && v.completeness !== 'passed';
   const results = s.results.filter((r) => r.visitId === v.id);
   const st = stationOf(active);
   const scores = scoreByPanel(results);
@@ -49,7 +50,10 @@ export default function VisitStations() {
             <h1 className="font-display text-[32px] font-semibold leading-tight text-plum-700">Your Vyta Day · {m.name}</h1>
             <p className="text-sm text-muted">{fmtDate(v.at)} · {fmtTime(v.at)} · {staffName(v.maId)} (MA) · {staffName(v.npId)} (NP)</p>
           </div>
+          <span className="flex flex-wrap items-center gap-2">
+          {canEdit && <ActingNote text={actingAs(role, 'visit_stations')} />}
           {v.completeness === 'passed' ? <Chip tone="ok"><Check size={13} aria-hidden="true" /> Completeness passed</Chip> : <Chip tone="info">Tests in clinic order</Chip>}
+          </span>
         </header>
         {!canEdit && v.completeness !== 'passed' && <p className="mb-4 rounded-lg bg-info-bg px-4 py-2 text-sm text-info-fg">Read only: the MA enters the test results.</p>}
 
@@ -284,6 +288,7 @@ function SkippedNote({ visit, station, result, canEdit }: { visit: Visit; statio
 
 function CompletenessFooter({ visit, canEdit }: { visit: Visit; canEdit: boolean }) {
   const s = useDemo();
+  const role = useStaffRole();
   const by = useBy();
   const check = canPassCompleteness(visit);
   const inCount = STATIONS.filter((x) => visit.stations![x.id] === 'done' || visit.stations![x.id] === 'skipped').length;
@@ -307,6 +312,7 @@ function CompletenessFooter({ visit, canEdit }: { visit: Visit; canEdit: boolean
             </p>
           )}
         </div>
+        {canEdit && <ActingNote text={actingAs(role, 'visit_stations')} className="max-sm:hidden" />}
         <Button className="w-full sm:w-auto" disabled={!check.ok || !canEdit} aria-describedby={!check.ok ? 'completeness-missing' : undefined}
           onClick={() => s.run((d) => ops.passCompleteness(d, visit.id, by), `Completeness passed · final review sent to ${staffName(visit.npId).split(' ')[0]} (NP)`)}>
           Pass completeness

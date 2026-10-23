@@ -154,6 +154,7 @@ export interface QueueItem {
   reason: string;
   ageLabel: string;
   priority: number; // 0 = pinned safety
+  roles: StaffRole[]; // whose list it belongs on; the first one owns it
   primary?: { label: string; action: QueueAction };
   secondary?: { label: string; action: QueueAction }[];
 }

@@ -16,6 +16,8 @@ import { SourceDialog, fmtValue } from '../../components/results';
 import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
 import type { IntakeValue, Result, StaffRole, Visit } from '../../types';
 import NotFound from './NotFound';
+import { can, actingAs, isSuperAdmin } from '../../state/permissions';
+import { ActingNote } from '../../components/domain';
 
 type Tab = 'overview' | 'timeline' | 'forms' | 'intake' | 'results' | 'report' | 'notes' | 'orders' | 'sage';
 // Who sees which tab (SCREENS S3). Admin sees everything.
@@ -36,14 +38,14 @@ export default function MemberRecord() {
   const [params, setParams] = useSearchParams();
   const [source, setSource] = useState<Result | null>(null);
   const [moving, setMoving] = useState<SlotKind | null>(null);
-  const allowed = (t: Tab) => role === 'admin' || TAB_ROLES[t].includes(role);
+  const allowed = (t: Tab) => isSuperAdmin(role) || TAB_ROLES[t].includes(role);
   const asked = params.get('tab') as Tab | null;
   const tab: Tab = asked && asked in TAB_ROLES && allowed(asked) ? asked : 'overview';
   const setTab = (t: Tab) => setParams(t === 'overview' ? {} : { tab: t }, { replace: true });
   const m = s.members.find((x) => x.id === id);
   if (!m) return <NotFound title="Member not found" body="She may have been removed, or the link is out of date." />;
   const by = STAFF_BY_ROLE[role];
-  const canMove = role === 'guide' || role === 'ma' || role === 'admin';
+  const canMove = can(role, 'reschedule');
   const forms = s.assignments.filter((a) => a.memberId === m.id);
   const intake = forms.find((a) => a.formId === 'f-intake');
   const draw = s.visits.find((v) => v.memberId === m.id && v.type === 'blood_draw');
@@ -110,7 +112,7 @@ export default function MemberRecord() {
               {m.phase === 'join' ? (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-plum-900">Discovery call done and paid. Record her goals, then send her intake and book her blood draw in one step.</p>
-                  {(role === 'guide' || role === 'admin') && <Button onClick={() => nav(`/staff/guide/onboard/${m.id}`)}>Onboard {m.name.split(' ')[0]}</Button>}
+                  {can(role, 'onboard') && <span className="flex flex-wrap items-center gap-2"><ActingNote text={actingAs(role, 'onboard')} /><Button onClick={() => nav(`/staff/${role}/onboard/${m.id}`)}>Onboard {m.name.split(' ')[0]}</Button></span>}
                 </div>
               ) : (
                 <ul className="space-y-3 text-sm">
@@ -127,11 +129,12 @@ export default function MemberRecord() {
                   {draw && (
                     <li className="flex flex-wrap items-center justify-between gap-3">
                       <span className="flex items-center gap-2"><Droplet size={16} className="text-terracotta-700" /> Blood draw {fmtDateTime(draw.at)} · {draw.labsReceivedAt ? 'labs received' : draw.status === 'done' ? 'drawn, labs awaited' : draw.status}</span>
-                      {(role === 'ma' || role === 'guide' || role === 'admin') && (
-                        <span className="flex gap-2">
-                          {draw.status === 'booked' && <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.confirmVisit(d, draw.id, by), 'Blood draw confirmed')}>Confirm</Button>}
+                      {can(role, 'mark_drawn') && (
+                        <span className="flex flex-wrap items-center gap-2">
+                          <ActingNote text={actingAs(role, 'mark_drawn')} />
+                          {draw.status === 'booked' && can(role, 'confirm_visit') && <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.confirmVisit(d, draw.id, by), 'Blood draw confirmed')}>Confirm</Button>}
                           {(draw.status === 'booked' || draw.status === 'confirmed') && <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.markDrawn(d, draw.id, by), 'Marked as drawn')}>Mark drawn</Button>}
-                          {draw.status === 'done' && !draw.labsReceivedAt && <Button size="sm" onClick={() => s.run((d) => ops.labsReceived(d, draw.id, by), 'Labs received')}>Labs received</Button>}
+                          {draw.status === 'done' && !draw.labsReceivedAt && can(role, 'labs_received') && <Button size="sm" onClick={() => s.run((d) => ops.labsReceived(d, draw.id, by), 'Labs received')}>Labs received</Button>}
                           {canMove && ops.canRescheduleVisit(s, draw) && <Button size="sm" variant="ghost" onClick={() => setMoving('blood_draw')}>Reschedule</Button>}
                         </span>
                       )}
@@ -140,13 +143,14 @@ export default function MemberRecord() {
                   {m.vytaDayAt && (
                     <li className="flex flex-wrap items-center justify-between gap-3">
                       <span className="flex items-center gap-2"><CalendarDays size={16} className="text-terracotta-700" /> Your Vyta Day {fmtDateTime(m.vytaDayAt)}</span>
-                      {canMove && ops.canRescheduleVytaDay(s, m) && <Button size="sm" variant="ghost" onClick={() => setMoving('vyta_day')}>Reschedule</Button>}
+                      {canMove && ops.canRescheduleVytaDay(s, m) && <span className="flex flex-wrap items-center gap-2"><ActingNote text={actingAs(role, 'reschedule')} /><Button size="sm" variant="ghost" onClick={() => setMoving('vyta_day')}>Reschedule</Button></span>}
                     </li>
                   )}
                   {report && reportLine && (
                     <li className="flex flex-wrap items-center justify-between gap-3">
                       <span className="flex items-center gap-2"><ClipboardCheck size={16} className="text-terracotta-700" /> {reportLine}</span>
-                      {(role === 'np' || role === 'admin') && <Button size="sm" variant={report.status === 'draft' ? 'primary' : 'ghost'} onClick={() => nav(`/staff/${role}/pre-review/${m.id}`)}>{report.status === 'draft' ? 'Pre-review' : 'View draft'}</Button>}
+                      {can(role, 'pre_review') && <ActingNote text={actingAs(role, 'pre_review')} />}
+                      {can(role, 'pre_review') && <Button size="sm" variant={report.status === 'draft' ? 'primary' : 'ghost'} onClick={() => nav(`/staff/${role}/pre-review/${m.id}`)}>{report.status === 'draft' ? 'Pre-review' : 'View draft'}</Button>}
                     </li>
                   )}
                 </ul>
@@ -210,11 +214,13 @@ export default function MemberRecord() {
             <Card className="p-5">
               <SectionTitle>Forms library</SectionTitle>
               <p className="mb-3 text-xs text-muted">Send any form or handout straight to her phone, even mid-visit.</p>
+              <ActingNote text={actingAs(role, 'send_form')} className="mb-3" />
+              {!can(role, 'send_form') && <p className="mb-3 text-xs text-muted">Sending forms is for the Guide or NP.</p>}
               <ul className="space-y-2">
                 {FORMS.filter((f) => f.kind !== 'intake').map((f) => (
                   <li key={f.id} className="flex items-center justify-between gap-2 text-sm">
                     <span className="text-plum-900">{f.title}</span>
-                    <Button size="sm" variant="ghost" disabled={role === 'ma' || role === 'coach'} onClick={() => s.run((d) => ops.sendForm(d, m.id, f.id, by), `Sent "${f.title}" to her phone`)}><Send size={14} /> Send</Button>
+                    <Button size="sm" variant="ghost" disabled={!can(role, 'send_form')} onClick={() => s.run((d) => ops.sendForm(d, m.id, f.id, by), `Sent "${f.title}" to her phone`)}><Send size={14} /> Send</Button>
                   </li>
                 ))}
               </ul>
@@ -235,7 +241,8 @@ export default function MemberRecord() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Chip tone={report.status === 'draft' || report.status === 'pre_reviewed' ? 'watch' : report.status === 'building' ? 'info' : 'ok'}>{STATUS_WORDS[report.status]}</Chip>
-                    {(role === 'np' || role === 'admin') && report.status !== 'building' && <Button size="sm" variant={report.status === 'draft' ? 'primary' : 'secondary'} onClick={() => nav(`/staff/${role}/pre-review/${m.id}`)}>{report.status === 'draft' ? 'Pre-review' : 'View draft'}</Button>}
+                    {can(role, 'pre_review') && report.status !== 'building' && <ActingNote text={actingAs(role, 'pre_review')} />}
+                    {can(role, 'pre_review') && report.status !== 'building' && <Button size="sm" variant={report.status === 'draft' ? 'primary' : 'secondary'} onClick={() => nav(`/staff/${role}/pre-review/${m.id}`)}>{report.status === 'draft' ? 'Pre-review' : 'View draft'}</Button>}
                   </div>
                 </div>
                 <div>

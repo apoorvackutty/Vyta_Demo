@@ -10,7 +10,7 @@ import { fmtDateTime, fmtDate } from '../lib/time';
 import { Avatar } from './ui';
 
 export const ROLE_LABEL: Record<Role, string> = {
-  member: 'Member (Testelle)', guide: 'Guide', ma: 'Medical Assistant', np: 'Nurse Practitioner', coach: 'Coach', admin: 'Admin',
+  member: 'Member (Testelle)', guide: 'Guide', ma: 'Medical Assistant', np: 'Nurse Practitioner', coach: 'Coach', admin: 'Super admin',
 };
 
 export function DemoBar() {
