@@ -20,6 +20,10 @@ interface DemoStore extends DemoData {
   signInMember: () => void;
   signOut: (who: 'staff' | 'member') => void;
   toasts: Toast[];
+  // The member phone's current screen. Kept here, not in MemberApp, so the side-by-side phone keeps its place
+  // when it remounts (role switch, hiding and showing the phone). Not saved to localStorage: a new tab starts on Home.
+  memberPath: string;
+  setMemberPath: (p: string) => void;
   setRole: (r: Role) => void;
   setSplit: (v: boolean) => void;
   loadScenario: (id: ScenarioId) => void;
@@ -55,14 +59,16 @@ export const useDemo = create<DemoStore>()(
       staffSignedIn: false,
       memberSignedIn: false,
       signInStaff: (role) => set({ role, staffSignedIn: true }),
-      signInMember: () => set({ memberSignedIn: true }),
-      signOut: (who) => set(who === 'staff' ? { staffSignedIn: false } : { memberSignedIn: false }),
+      signInMember: () => set({ memberSignedIn: true, memberPath: '/home' }),
+      signOut: (who) => set(who === 'staff' ? { staffSignedIn: false } : { memberSignedIn: false, memberPath: '/home' }),
       toasts: [],
+      memberPath: '/home',
+      setMemberPath: (memberPath) => set({ memberPath }),
       // The demo bar's role switcher is the presenter's backstage door, so it signs you in.
       setRole: (role) => set(role === 'member' ? { role } : { role, staffSignedIn: true }),
       setSplit: (split) => set({ split }),
-      loadScenario: (id) => set({ ...buildScenario(id), scenario: id, toasts: [] }),
-      reset: () => set({ ...buildScenario('day0'), scenario: 'day0', role: 'guide', split: false, toasts: [], staffSignedIn: false, memberSignedIn: false }),
+      loadScenario: (id) => set({ ...buildScenario(id), scenario: id, toasts: [], memberPath: '/home' }),
+      reset: () => set({ ...buildScenario('day0'), scenario: 'day0', role: 'guide', split: false, toasts: [], staffSignedIn: false, memberSignedIn: false, memberPath: '/home' }),
       run: (fn, toast, key, undo) => {
         const before = undo ? pickData(get()) : null;
         const draft = pickData(get());
@@ -98,7 +104,7 @@ export const useDemo = create<DemoStore>()(
     {
       name: 'vyta-demo-v2',
       partialize: (s) => {
-        const { toasts, ...rest } = s;
+        const { toasts, memberPath, ...rest } = s;
         return rest;
       },
     },

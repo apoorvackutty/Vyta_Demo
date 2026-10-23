@@ -46,7 +46,8 @@ export default function MemberApp() {
 function MemberAppInner() {
   const signedIn = useDemo((s) => s.memberSignedIn);
   const name = useDemo((s) => s.members.find((m) => m.id === MEMBER_ID)?.name ?? '');
-  const [path, setPath] = useState('/home');
+  const path = useDemo((s) => s.memberPath);
+  const setPath = useDemo((s) => s.setMemberPath);
   const scroller = useRef<HTMLDivElement>(null);
   // Each in-app screen change moves focus to its title, so screen readers hear the new page.
   // Beside the staff view (split) the phone is secondary, so it leaves the browser tab's title alone.
