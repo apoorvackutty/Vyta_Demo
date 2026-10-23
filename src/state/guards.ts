@@ -1,5 +1,5 @@
 // Gate guards (docs/SCHEMA.md §4). The UI disables the gate button and lists `missing` in plain words.
-import type { PlanItem, PlanField, Report, Result, Station, Visit } from '../types';
+import type { Finding, PlanItem, PlanField, Report, Result, Station, Visit } from '../types';
 import { STATIONS, UPLOADS, FUNCTIONAL, stationOf } from '../data/stations';
 import { FIELD_LABEL, BAND_RANK } from '../data/protocol';
 
@@ -71,5 +71,24 @@ export function canPassCompleteness(visit: Visit, results: Result[] = []): { ok:
     if (c.toCheck) missing.push(`${st.label}: ${c.toCheck} value${c.toCheck > 1 ? 's' : ''} still to check`);
   }
   if (visit.completeness === 'passed') missing.push('Completeness has already passed');
+  return { ok: missing.length === 0, missing };
+}
+
+// ---------- N3 Final review ----------
+// New since pre-review: Your Vyta Day results out of range. Each needs a decision, like the pre-review findings.
+const NEW_FINDING_BANDS = new Set(['needs_attention', 'below_target']);
+export function vytaDayFindings(report: Report, visitResults: Result[]): { result: Result; finding?: Finding }[] {
+  return visitResults
+    .filter((r) => NEW_FINDING_BANDS.has(r.band) && !r.skipped && !r.excludedFromScore)
+    .map((r) => ({ result: r, finding: report.findings.find((f) => f.resultId === r.id) }));
+}
+
+export function canFinishFinalReview(report: Report, visit: Visit | undefined, visitResults: Result[]): { ok: boolean; missing: string[] } {
+  const missing: string[] = [];
+  if (!visit || visit.completeness !== 'passed') missing.push('Waiting on the completeness check (MA or NP)');
+  const open = vytaDayFindings(report, visitResults).filter((x) => !x.finding?.decision);
+  if (open.length) missing.push(`${open.length} new finding${open.length > 1 ? 's' : ''} from Your Vyta Day need${open.length > 1 ? '' : 's'} a decision (${open.map((x) => x.result.marker).join(', ')})`);
+  if (report.status !== 'final_review') missing.push('The report is not waiting on final review');
+  else if (report.finalReviewedAt) missing.push('Final review is already done');
   return { ok: missing.length === 0, missing };
 }

@@ -124,7 +124,7 @@ describe('Completeness check', () => {
     ops.passCompleteness(d, v().id, 's-ma');
     const task = getQueue(d, 'np').find((q) => q.label.startsWith('Final review'))!;
     expect(task.reason).toContain('ShapeScale skipped');
-    expect(task.primary?.action).toEqual({ type: 'open_record', memberId: 'm-testelle' });
+    expect(task.primary?.action).toEqual({ type: 'final_review', memberId: 'm-testelle' });
     expect(getQueue(d, 'ma').some((q) => q.memberId === 'm-testelle' && (q.label.startsWith('Your Vyta Day') || q.label === 'Completeness check'))).toBe(false);
     expect(d.approvals[d.approvals.length - 1].gate).toBe('completeness');
     // Locked once passed.

@@ -95,7 +95,9 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
           ageLabel: '—', priority: 1,
           primary: can(role, 'start_visit')
             ? { label: started ? 'Continue visit' : 'Start visit', action: { type: 'start_visit', visitId: v.id } }
-            : { label: 'Open', action: { type: 'open_record', memberId: m.id } },
+            : role === 'np' && started
+              ? { label: 'Watch sections', action: { type: 'final_review', memberId: m.id } }
+              : { label: 'Open', action: { type: 'open_record', memberId: m.id } },
         });
       }
       // Booked once the Coach approves the wording (C1), so the MA can see what's coming before the day.
@@ -130,9 +132,8 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
           primary: { label: 'Pre-review', action: { type: 'pre_review', memberId: m.id } },
         });
       }
-      // N3 itself is task 20: for now the task opens her record.
       const day = d.visits.find((v) => v.memberId === m.id && v.type === 'vyta_day');
-      if (r.status === 'final_review' && day?.completeness === 'passed') {
+      if (r.status === 'final_review' && day?.completeness === 'passed' && !r.finalReviewedAt) {
         const skipped = STATIONS.filter((x) => day.stations?.[x.id] === 'skipped').map((x) => x.label);
         const passed = d.approvals.filter((a) => a.memberId === m.id && a.gate === 'completeness').slice(-1)[0];
         items.push({
@@ -140,7 +141,7 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
           label: 'Final review · Your Vyta Day',
           reason: `All tests in${skipped.length ? ` · ${skipped.join(', ')} skipped, left out of scores` : ''} · only what changed since pre-review`,
           ageLabel: ageLabel(passed?.at ?? d.now, d.now), priority: 1,
-          primary: { label: 'Open', action: { type: 'open_record', memberId: m.id } },
+          primary: { label: 'Final review', action: { type: 'final_review', memberId: m.id } },
         });
       }
       if (r.status === 'pre_reviewed') {

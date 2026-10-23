@@ -84,7 +84,10 @@ export const BAND_RANK: Record<Band, number> = {
   needs_attention: 0, below_target: 1, watch: 2, not_retested: 3, not_scored: 4, optimal: 5, elite: 6,
 };
 
+// Final baseline scores, once Your Vyta Day's body tests are in (SAMPLE_DATA: VMRI 54, biological age 51, symptoms 58).
 export const BASELINE_SCORES: Scores = { vmri: 54, vmriBand: 'moderate_burden', biologicalAge: 51, symptoms: 58 };
+// What the draft could score from labs and intake alone, as the NP saw it at pre-review. The N3 diff runs from here.
+export const PRE_REVIEW_SCORES: Scores = { vmri: 52, vmriBand: 'moderate_burden', biologicalAge: 53, symptoms: 58 };
 export const BASELINE_FOCUS = [
   'Rebuild your energy: iron stores are low (ferritin 8).',
   'Calm inflammation: hs-CRP is 9.5 and your immune ratio is high.',

@@ -2,13 +2,15 @@ import type { DemoData } from './ops';
 import {
   onboard, signForm, saveIntake, markDrawn, confirmVisit, labsReceived, finishDraft, skipIntakeToEnd, log,
   acceptSuggestions, editPlanItem, reviewPlanItem, approvePreReview, approveWording, bookVytaDayVisit, editWording,
+  vytaDayVisit, startVisit, uploadStation, markStationChecked, saveFunctional, skipStation, passCompleteness, type FunctionalEntry,
 } from './ops';
+import { FUNCTIONAL } from '../data/stations';
 import { WORDING_SUGGESTIONS } from '../data/wording';
 import { TESTELLE_BASE, ROSTER, TESTELLE_INTAKE, BLOOD_DRAW_SLOTS } from '../data/seed';
 import { INTAKE } from '../data/intake';
 import { fillRequired } from '../lib/intakeFlow';
 
-export type ScenarioId = 'day0' | 'intake_stalled' | 'labs_back' | 'wording' | 'vyta_day' | 'released' | 'safety' | 'quarterly';
+export type ScenarioId = 'day0' | 'intake_stalled' | 'labs_back' | 'wording' | 'vyta_day' | 'tests_done' | 'released' | 'safety' | 'quarterly';
 
 export const SCENARIOS: { id: ScenarioId; label: string; ready: boolean }[] = [
   { id: 'day0', label: '1 · Day 0 – after discovery call', ready: true },
@@ -16,6 +18,7 @@ export const SCENARIOS: { id: ScenarioId; label: string; ready: boolean }[] = [
   { id: 'labs_back', label: '3 · Labs back – draft for NP', ready: true },
   { id: 'wording', label: '3b · Pre-review approved – wording for Coach', ready: true },
   { id: 'vyta_day', label: '4 · Your Vyta Day – morning', ready: true },
+  { id: 'tests_done', label: '4b · Tests done – final review for NP', ready: true },
   { id: 'released', label: '5 · After release – member home', ready: false },
   { id: 'safety', label: '6 · Safety flag raised', ready: false },
   { id: 'quarterly', label: '7 · 3-month review', ready: false },
@@ -105,7 +108,23 @@ function vytaDay(): DemoData {
   return d;
 }
 
+// Jordan runs the stations in clinic order (demo script step 5): ShapeScale skipped, scanner offline. 9:40: with Dana.
+export function testsDone(): DemoData {
+  const d = vytaDay();
+  const v = vytaDayVisit(d, 'm-testelle')!;
+  const at = (t: string) => { d.now = `2026-10-28T${t}`; };
+  at('08:32'); startVisit(d, v.id, 's-ma');
+  at('08:41'); uploadStation(d, v.id, 'inbody', 's-ma'); markStationChecked(d, v.id, 'inbody', 's-ma');
+  at('08:58'); saveFunctional(d, v.id, Object.fromEntries(FUNCTIONAL.map((t) => [t.id, t.seed])) as FunctionalEntry, 's-ma');
+  at('09:02'); skipStation(d, v.id, 'shapescale', 'Scanner offline – reschedule at 3-month', 's-ma');
+  at('09:24'); uploadStation(d, v.id, 'vo2', 's-ma'); markStationChecked(d, v.id, 'vo2', 's-ma');
+  at('09:26'); passCompleteness(d, v.id, 's-ma');
+  at('09:40');
+  return d;
+}
+
 export function buildScenario(id: ScenarioId): DemoData {
+  if (id === 'tests_done') return testsDone();
   if (id === 'wording') return wording();
   if (id === 'vyta_day') return vytaDay();
   if (id === 'intake_stalled') return intakeStalled();

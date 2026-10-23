@@ -246,6 +246,7 @@ export default function MemberRecord() {
                     <Chip tone={report.status === 'draft' || report.status === 'pre_reviewed' ? 'watch' : report.status === 'building' ? 'info' : 'ok'}>{STATUS_WORDS[report.status]}</Chip>
                     {can(role, 'pre_review') && report.status !== 'building' && <ActingNote text={actingAs(role, 'pre_review')} />}
                     {can(role, 'pre_review') && report.status !== 'building' && <Button size="sm" variant={report.status === 'draft' ? 'primary' : 'secondary'} onClick={() => nav(`/staff/${role}/pre-review/${m.id}`)}>{report.status === 'draft' ? 'Pre-review' : 'View draft'}</Button>}
+                    {can(role, 'final_review') && report.status === 'final_review' && <Button size="sm" variant={report.finalReviewedAt ? 'secondary' : 'primary'} onClick={() => nav(`/staff/${role}/final/${m.id}`)}>Final review</Button>}
                     {(role === 'coach' || isSuperAdmin(role)) && !['building', 'draft'].includes(report.status) && <Button size="sm" variant={report.status === 'pre_reviewed' ? 'primary' : 'secondary'} onClick={() => nav(`/staff/${role}/wording/${m.id}`)}>{report.status === 'pre_reviewed' ? 'Review wording' : 'View wording'}</Button>}
                   </div>
                 </div>

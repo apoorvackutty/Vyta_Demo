@@ -8,10 +8,11 @@ import { INTAKE } from '../data/intake';
 import { extraKeys } from '../lib/intakeFormat';
 import { fillRequired } from '../lib/intakeFlow';
 import { fmtDateTime, fmtDate, toMs } from '../lib/time';
-import { baselineLabs, draftFindings, draftPlan, BASELINE_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
+import { baselineLabs, draftFindings, draftPlan, PRE_REVIEW_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
 import { STAFF } from '../data/seed';
 import { BASELINE_SUMMARY, wordingSlots, wordingChanged } from '../data/wording';
-import { canApprovePreReview, canPassCompleteness, unfilled } from './guards';
+import { canApprovePreReview, canPassCompleteness, unfilled, canFinishFinalReview, vytaDayFindings } from './guards';
+import { vytaDayScores } from '../lib/scores';
 import { STATIONS, stationOf, uploadResults, bandFor, resultId, FUNCTIONAL, functionalBand, type FunctionalId } from '../data/stations';
 
 export interface DemoData {
@@ -211,7 +212,7 @@ export function labsReceived(d: DemoData, visitId: string, byId: string) {
   if (!d.reports.some((r) => r.memberId === v.memberId && r.kind === 'baseline')) {
     d.reports.push({
       id: `r-${v.memberId}-baseline`, memberId: v.memberId, kind: 'baseline', version: 1, status: 'building',
-      scores: { ...BASELINE_SCORES }, focusAreas: [...BASELINE_FOCUS], findings: [], plan: [], protocol: PROTOCOL_NAME, summary: BASELINE_SUMMARY,
+      scores: { ...PRE_REVIEW_SCORES }, focusAreas: [...BASELINE_FOCUS], findings: [], plan: [], protocol: PROTOCOL_NAME, summary: BASELINE_SUMMARY,
       building: { kind: 'draft', startedAt: d.now },
     });
     log(d, v.memberId, 'system', 'draft_building', `Building draft HEAL plan from the ${PROTOCOL_NAME.toLowerCase()}`);
@@ -313,6 +314,7 @@ export function approvePreReview(d: DemoData, reportId: string, byId: string): b
   const r = report(d, reportId);
   if (!canApprovePreReview(r, d.results).ok) return false;
   r.status = 'pre_reviewed';
+  r.preReviewScores = { ...r.scores };
   d.approvals.push({ id: id(d, 'ap'), gate: 'np_pre_review', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'approved', byId, at: d.now });
   log(d, r.memberId, byId, 'approval', `NP pre-review approved · v${r.version} · ${staffName(byId)}. Wording review is with the Coach`);
   refreshStep(d, r.memberId);
@@ -522,6 +524,75 @@ export function passCompleteness(d: DemoData, visitId: string, byId: string): bo
   d.approvals.push({ id: id(d, 'ap'), gate: 'completeness', memberId: v.memberId, outcome: 'approved', byId, at: d.now });
   member(d, v.memberId).step = 'Your Vyta Day · waiting on NP final review';
   log(d, v.memberId, byId, 'approval', `Completeness check passed by ${staffName(byId)}: every test in${skipped.length ? ` or skipped with a reason (${skipped.join(', ')})` : ''}. Final review is with the NP`);
+  return true;
+}
+
+// ---------- N3 Final review: sections arrive from the MA, the NP checks only what changed ----------
+const dayResults = (d: DemoData, memberId: string) => {
+  const v = vytaDayVisit(d, memberId);
+  return v ? d.results.filter((r) => r.visitId === v.id) : [];
+};
+const inFinalReview = (d: DemoData, r: Result) => {
+  const rep = d.reports.find((x) => x.memberId === r.memberId && x.kind === 'baseline');
+  return rep && rep.status === 'final_review' && !rep.finalReviewedAt ? rep : null;
+};
+
+export function decideNewFinding(d: DemoData, reportId: string, resultIdArg: string, decision: NonNullable<Finding['decision']>, byId: string) {
+  const r = report(d, reportId);
+  if (r.status !== 'final_review' || r.finalReviewedAt) return;
+  const hit = vytaDayFindings(r, dayResults(d, r.memberId)).find((x) => x.result.id === resultIdArg);
+  if (!hit) return;
+  const res = hit.result;
+  const f = hit.finding ?? (r.findings.push({
+    id: `fd-${res.id}`, resultId: res.id, fromVytaDay: true,
+    summary: `${res.marker} ${res.value}${res.unit ? ` ${res.unit}` : ''}, outside the ${res.target ?? 'target'} target · from Your Vyta Day (${res.source})`,
+  }), r.findings[r.findings.length - 1]);
+  Object.assign(f, { decision, decidedById: byId, decidedAt: d.now });
+  log(d, r.memberId, byId, 'finding_decided', `New finding ${res.marker} (Your Vyta Day): ${DECISION_LABEL[decision]}`);
+}
+
+// Correct a value with a reason. The band follows the new value; the original is kept for the audit trail.
+export function correctResult(d: DemoData, resultIdArg: string, value: number | string, reason: string, byId: string) {
+  const res = d.results.find((x) => x.id === resultIdArg);
+  const st = STATIONS.find((x) => x.panel === res?.panel);
+  if (!res || !st || !reason.trim() || res.skipped || !inFinalReview(d, res) || res.value === value) return;
+  res.corrected = { from: res.corrected?.from ?? res.value, reason: reason.trim(), byId, at: d.now };
+  const before = res.value;
+  res.value = value;
+  res.band = bandFor(st.id, res.marker, value);
+  log(d, res.memberId, byId, 'result_corrected', `Final review · ${st.label} · ${res.marker} corrected ${before ?? '—'} → ${value}${res.unit ? ` ${res.unit}` : ''}: "${reason.trim()}"`);
+}
+
+// Leave a value out of her scores, with a reason. Never counted as zero.
+export function excludeResult(d: DemoData, resultIdArg: string, reason: string, byId: string) {
+  const res = d.results.find((x) => x.id === resultIdArg);
+  if (!res || !reason.trim() || res.skipped || res.excludedFromScore || !inFinalReview(d, res)) return;
+  res.excludedFromScore = true;
+  res.excludedReason = reason.trim();
+  log(d, res.memberId, byId, 'result_excluded', `Final review · ${res.marker} left out of her scores: "${reason.trim()}". Not counted as zero`);
+}
+
+export function includeResult(d: DemoData, resultIdArg: string, byId: string) {
+  const res = d.results.find((x) => x.id === resultIdArg);
+  if (!res || res.skipped || !res.excludedFromScore || !inFinalReview(d, res)) return;
+  res.excludedFromScore = false;
+  delete res.excludedReason;
+  log(d, res.memberId, byId, 'result_included', `Final review · ${res.marker} back in her scores`);
+}
+
+export function finishFinalReview(d: DemoData, reportId: string, byId: string): boolean {
+  const r = report(d, reportId);
+  const v = vytaDayVisit(d, r.memberId);
+  const results = dayResults(d, r.memberId);
+  if (!canFinishFinalReview(r, v, results).ok) return false;
+  const pre = r.preReviewScores ?? r.scores;
+  const { body: _body, ...scores } = vytaDayScores(pre, results);
+  r.scores = scores;
+  r.finalReviewedAt = d.now;
+  r.finalReviewedById = byId;
+  d.approvals.push({ id: id(d, 'ap'), gate: 'np_final_review', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'approved', byId, at: d.now });
+  member(d, r.memberId).step = 'Your Vyta Day · results with your NP';
+  log(d, r.memberId, byId, 'approval', `NP final review done · ${staffName(byId)} · VMRI ${pre.vmri} → ${scores.vmri}, biological age ${pre.biologicalAge} → ${scores.biologicalAge}. Ready for the results conversation`);
   return true;
 }
 
