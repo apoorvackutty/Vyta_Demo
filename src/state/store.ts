@@ -5,7 +5,7 @@ import type { DemoData } from './ops';
 import * as ops from './ops';
 import { buildScenario, type ScenarioId } from './scenarios';
 
-interface Toast { id: number; text: string }
+interface Toast { id: number; text: string; key?: string }
 
 interface DemoStore extends DemoData {
   scenario: ScenarioId;
@@ -16,8 +16,9 @@ interface DemoStore extends DemoData {
   setSplit: (v: boolean) => void;
   loadScenario: (id: ScenarioId) => void;
   reset: () => void;
-  run: (fn: (d: DemoData) => void, toast?: string) => void;
-  toast: (text: string) => void;
+  // `key` merges rapid actions of one kind (e.g. plan edits) into a single updating toast.
+  run: (fn: (d: DemoData) => void, toast?: string, key?: string) => void;
+  toast: (text: string, key?: string) => void;
   dismissToast: (id: number) => void;
   markNoticesRead: (memberId: string) => void;
 }
@@ -42,15 +43,15 @@ export const useDemo = create<DemoStore>()(
       setSplit: (split) => set({ split }),
       loadScenario: (id) => set({ ...buildScenario(id), scenario: id, toasts: [] }),
       reset: () => set({ ...buildScenario('day0'), scenario: 'day0', role: 'guide', split: false, toasts: [] }),
-      run: (fn, toast) => {
+      run: (fn, toast, key) => {
         const draft = pickData(get());
         fn(draft);
         set(draft);
-        if (toast) get().toast(toast);
+        if (toast) get().toast(toast, key);
       },
-      toast: (text) => {
+      toast: (text, key) => {
         const id = ++toastSeq;
-        set((s) => ({ toasts: [...s.toasts, { id, text }] }));
+        set((s) => ({ toasts: [...s.toasts.filter((t) => !key || t.key !== key), { id, text, key }] }));
         setTimeout(() => get().dismissToast(id), 3200);
       },
       dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

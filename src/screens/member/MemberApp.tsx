@@ -247,6 +247,11 @@ function FormView({ aid }: { aid: string }) {
               to fill in {m.name}
             </p>
           )}
+          {(!read || name.trim().length < 2) && (
+            <p className="text-[13px] text-muted" aria-live="polite">
+              {!read && name.trim().length < 2 ? 'Tick the box and add your name to sign.' : !read ? 'Tick the box above to sign.' : 'Add your name to sign.'}
+            </p>
+          )}
           <Button size="lg" className="w-full" disabled={!read || name.trim().length < 2} onClick={() => { s.run((d) => ops.signForm(d, a.id, name.trim()), 'Signed · thank you'); nav('/forms'); }}>Sign</Button>
         </div>
       )}

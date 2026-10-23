@@ -207,6 +207,7 @@ export interface Finding {
   id: string;
   resultId: string;
   summary: string;
+  suggested?: 'treat' | 'refer' | 'monitor' | 'dismiss'; // from the protocol; the NP still decides
   decision?: 'treat' | 'refer' | 'monitor' | 'dismiss';
   note?: string;
   decidedById?: string;

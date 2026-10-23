@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { ArrowLeft, Check, FileText, Loader2, MessageSquarePlus, RotateCcw, StickyNote, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, FileText, Loader2, MessageSquarePlus, Pencil, RotateCcw, StickyNote, Trash2 } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
 import { BandChip } from '../../components/domain';
@@ -127,8 +127,12 @@ function Building({ report, name }: { report: Report; name: string }) {
 function Findings({ report, results, canEdit }: { report: Report; results: Result[]; canEdit: boolean }) {
   const [source, setSource] = useState<Result | null>(null);
   const byId = (rid: string) => results.find((r) => r.id === rid);
-  const findings = report.findings.slice().sort((a, b) => BAND_RANK[byId(a.resultId)?.band ?? 'optimal'] - BAND_RANK[byId(b.resultId)?.band ?? 'optimal']);
+  const rank = (f: Finding) => BAND_RANK[byId(f.resultId)?.band ?? 'optimal'];
+  const findings = report.findings.slice().sort((a, b) => rank(a) - rank(b));
   const decided = findings.filter((f) => f.decision).length;
+  // One block per body system, so related markers (the iron trio, the testosterone pair) sit together. Worst system first.
+  const systems = [...new Set(findings.map((f) => byId(f.resultId)?.panel ?? ''))]
+    .map((panel) => ({ panel, items: findings.filter((f) => byId(f.resultId)?.panel === panel) }));
   const flagged = new Set(findings.map((f) => f.resultId));
   const others = results.filter((r) => !flagged.has(r.id));
   return (
@@ -138,12 +142,19 @@ function Findings({ report, results, canEdit }: { report: Report; results: Resul
           <h2 id="findings-h" className="text-base font-semibold text-plum-900">Findings · out of range first</h2>
           <span className="text-xs tabular-nums text-muted">{decided} of {findings.length} decided</span>
         </div>
-        <ul>
-          {findings.map((f) => {
-            const r = byId(f.resultId);
-            return r ? <FindingRow key={f.id} finding={f} result={r} reportId={report.id} canEdit={canEdit} onSource={() => setSource(r)} /> : null;
-          })}
-        </ul>
+        {systems.map(({ panel, items }) => (
+          <div key={panel}>
+            <h3 className="flex justify-between border-b border-line bg-cream-100 px-4 py-1.5 text-[13px] font-medium text-muted">
+              <span>{panel}</span><span className="tabular-nums">{items.filter((f) => f.decision).length} of {items.length} decided</span>
+            </h3>
+            <ul>
+              {items.map((f) => {
+                const r = byId(f.resultId);
+                return r ? <FindingRow key={f.id} finding={f} result={r} reportId={report.id} canEdit={canEdit} onSource={() => setSource(r)} /> : null;
+              })}
+            </ul>
+          </div>
+        ))}
       </Card>
       <Card>
         <h2 className="border-b border-line px-4 py-3 text-base font-semibold text-plum-900">Other results <span className="text-xs font-normal text-muted">· no decision needed</span></h2>
@@ -187,7 +198,7 @@ function FindingRow({ finding: f, result: r, reportId, canEdit, onSource }: { fi
           {DECISIONS.map((d, i) => (
             <button
               key={d.id} aria-pressed={f.decision === d.id} disabled={!canEdit}
-              onClick={() => run((x) => ops.decideFinding(x, reportId, f.id, d.id, by), `${r.marker}: ${d.label}`)}
+              onClick={() => run((x) => ops.decideFinding(x, reportId, f.id, d.id, by), `${r.marker}: ${d.label}`, 'n2-finding')}
               className={clsx('h-8 px-3 text-[13px] font-medium focus-visible:relative focus-visible:outline focus-visible:outline-2 focus-visible:outline-terracotta-500 disabled:cursor-not-allowed',
                 i > 0 && 'border-l border-plum-700',
                 f.decision === d.id ? 'bg-plum-700 text-paper' : 'bg-paper text-plum-700 enabled:hover:bg-plum-100')}
@@ -198,6 +209,7 @@ function FindingRow({ finding: f, result: r, reportId, canEdit, onSource }: { fi
         </div>
         {canEdit && <Button size="sm" variant="ghost" onClick={() => setNoteOpen((o) => !o)}><MessageSquarePlus size={14} /> {f.note ? 'Edit note' : 'Add note'}</Button>}
         {f.decision && f.decidedAt && <span className="text-xs text-muted">{staffName(f.decidedById).split(' ')[0]} · {fmtTime(f.decidedAt)}</span>}
+        {!f.decision && f.suggested && <span className="text-xs text-muted">Protocol suggests <strong className="font-semibold text-plum-700">{DECISIONS.find((d) => d.id === f.suggested)?.label}</strong></span>}
       </div>
       {f.note && !noteOpen && <p className="mt-2 rounded-md bg-plum-100 px-3 py-1.5 text-sm text-plum-900">Note: {f.note}</p>}
       {noteOpen && (
@@ -268,7 +280,9 @@ function PlanItemRow({ item, reportId, canEdit }: { item: PlanItem; reportId: st
   const by = STAFF_BY_ROLE[role];
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState(item.sideNote ?? '');
+  const [editing, setEditing] = useState(false);
   const flagged = needsReview(item);
+  const open = (editing || flagged) && canEdit && !item.removed; // flagged items open themselves; the rest read as one line
   const gaps = unfilled(item);
   const fields: PlanField[] = isLifestyle(item.group) ? ['dose'] : ['dose', 'form', 'route', 'frequency'];
   const consent = FORMS.find((f) => f.id === item.needsConsentFormId);
@@ -285,12 +299,18 @@ function PlanItemRow({ item, reportId, canEdit }: { item: PlanItem; reportId: st
         {consent && !item.removed && <Chip tone="info">Needs consent: {consent.title.replace(' consent', '')}</Chip>}
         {item.supplier && <span className="ml-auto text-xs text-muted">{SUPPLIER[item.supplier]}</span>}
       </div>
-      {!item.removed && (
+      {!item.removed && !open && (
+        <div className="mt-1 flex items-center gap-3">
+          <p className="text-sm text-plum-900">{fields.map((f) => item[f] && cap(item[f]!)).filter(Boolean).join(' · ')}</p>
+          {canEdit && <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setEditing(true)} aria-label={`Edit ${item.name}`}><Pencil size={14} /> Edit</Button>}
+        </div>
+      )}
+      {open && (
         <div className="mt-2 flex flex-wrap gap-2">
           {fields.map((f) => (
             <PlanSelect key={f} label={isLifestyle(item.group) ? 'Target' : FIELD_LABEL[f]} value={item[f]} options={item.options?.[f]}
               missing={gaps.includes(f)} disabled={!editable} id={`${item.id}-${f}`}
-              onChange={(v) => run((x) => ops.editPlanItem(x, reportId, item.id, f, v, by), `${item.name}: ${FIELD_LABEL[f].toLowerCase()} set to ${v}`)} />
+              onChange={(v) => run((x) => ops.editPlanItem(x, reportId, item.id, f, v, by), `${item.name}: ${FIELD_LABEL[f].toLowerCase()} set to ${v}`, 'n2-plan')} />
           ))}
         </div>
       )}
@@ -303,7 +323,7 @@ function PlanItemRow({ item, reportId, canEdit }: { item: PlanItem; reportId: st
           <Button type="submit">Save</Button>
         </form>
       )}
-      {canEdit && (
+      {canEdit && (open || item.removed) && (
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {flagged && (
             <Button size="sm" variant="secondary" disabled={gaps.length > 0}
@@ -313,9 +333,10 @@ function PlanItemRow({ item, reportId, canEdit }: { item: PlanItem; reportId: st
             </Button>
           )}
           {flagged && gaps.length > 0 && <span className="text-xs text-watch-fg">Fill in the {gaps.map((g) => FIELD_LABEL[g].toLowerCase()).join(' and ')} first</span>}
+          {editing && !flagged && <Button size="sm" variant="secondary" onClick={() => { setEditing(false); setNoteOpen(false); }}><Check size={14} /> Done</Button>}
           {!item.removed && <Button size="sm" variant="ghost" onClick={() => setNoteOpen((o) => !o)}><StickyNote size={14} /> {item.sideNote ? 'Edit side note' : 'Side note'}</Button>}
           {item.removed
-            ? <Button size="sm" variant="ghost" onClick={() => run((x) => ops.removePlanItem(x, reportId, item.id, false, by), `${item.name} restored`)}><RotateCcw size={14} /> Restore</Button>
+            ? <Button size="sm" variant="ghost" onClick={() => { setEditing(false); run((x) => ops.removePlanItem(x, reportId, item.id, false, by), `${item.name} restored`); }}><RotateCcw size={14} /> Restore</Button>
             : <Button size="sm" variant="danger" className="ml-auto" onClick={() => run((x) => ops.removePlanItem(x, reportId, item.id, true, by), `${item.name} removed from the plan`)}><Trash2 size={14} /> Remove</Button>}
         </div>
       )}
@@ -359,6 +380,7 @@ function GateFooter({ report, results, canEdit, memberName }: { report: Report; 
   const role = useStaffRole();
   const by = STAFF_BY_ROLE[role];
   const check = canApprovePreReview(report, results);
+  const suggestable = report.findings.filter((f) => !f.decision && f.suggested).length;
   const [why, setWhy] = useState(false);
   const [sendBack, setSendBack] = useState(false);
   const [reason, setReason] = useState(SEND_BACK_REASONS[0]);
@@ -391,9 +413,9 @@ function GateFooter({ report, results, canEdit, memberName }: { report: Report; 
           <span className="text-plum-900">Items resolved <strong className="tabular-nums">{check.itemsResolved}/{check.itemsTotal}</strong></span>
           <ProgressBar value={check.itemsResolved / Math.max(1, check.itemsTotal)} label="Plan items resolved" />
         </div>
-        {canEdit && check.findingsDecided < check.findingsTotal && (
-          <Button size="sm" variant="ghost" onClick={() => s.run((d) => ops.monitorRemaining(d, report.id, by), 'Remaining findings set to Monitor')}>
-            Demo shortcut: Monitor the rest
+        {canEdit && suggestable > 0 && (
+          <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.acceptSuggestions(d, report.id, by), `Protocol suggestions accepted for ${suggestable} findings`)}>
+            Accept protocol suggestions ({suggestable} left)
           </Button>
         )}
         <div className="ml-auto flex items-center gap-2">

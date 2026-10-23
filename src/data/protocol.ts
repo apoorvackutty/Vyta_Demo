@@ -66,9 +66,16 @@ export function baselineLabs(memberId: string, visitId: string): Result[] {
   })));
 }
 
+// What the protocol suggests for each finding (illustrative). Treat where the draft plan already acts on it.
+const SUGGESTED: Record<string, NonNullable<Finding['suggested']>> = {
+  Progesterone: 'treat', 'Free testosterone': 'treat', 'Total testosterone': 'treat', 'DHEA-S': 'monitor', 'Free T3': 'monitor',
+  'hs-CRP': 'treat', LDL: 'monitor', Neutrophils: 'monitor', 'Lymphocytes (absolute)': 'monitor', NLR: 'monitor',
+  Ferritin: 'treat', 'Iron (total)': 'treat', 'Iron saturation': 'treat', 'Vitamin D': 'treat', 'Vitamin B12': 'treat', Homocysteine: 'monitor',
+};
+
 export function draftFindings(): Finding[] {
   return PANELS.flatMap(({ rows }) => rows.filter((r) => r[5]).map(([marker, , , , , summary]) => ({
-    id: `fd-${slug(marker)}`, resultId: `res-${slug(marker)}`, summary: summary!,
+    id: `fd-${slug(marker)}`, resultId: `res-${slug(marker)}`, summary: summary!, suggested: SUGGESTED[marker],
   })));
 }
 

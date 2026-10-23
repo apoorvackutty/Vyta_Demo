@@ -12,7 +12,7 @@ const setup = () => {
 };
 // Everything the NP must do before Approve unlocks.
 function resolveAll(d: ReturnType<typeof setup>['d']) {
-  ops.monitorRemaining(d, RID, 's-np');
+  ops.acceptSuggestions(d, RID, 's-np');
   ops.editPlanItem(d, RID, 'pi-testosterone', 'dose', '0.5 mg', 's-np');
   ops.editPlanItem(d, RID, 'pi-iron', 'dose', '25 mg elemental', 's-np');
   ops.removePlanItem(d, RID, 'pi-tirzepatide', true, 's-np');
@@ -86,6 +86,15 @@ describe('N2 pre-review', () => {
     expect(r.status).toBe('draft');
     expect(r.version).toBe(2);
     expect(r.findings.find((f) => f.id === 'fd-ferritin')!.decision).toBe('treat');
+  });
+
+  it('accepting suggestions only fills findings the NP has not decided', () => {
+    const { d, r } = setup();
+    ops.decideFinding(d, RID, 'fd-ferritin', 'refer', 's-np');
+    ops.acceptSuggestions(d, RID, 's-np');
+    expect(r.findings.every((f) => f.decision)).toBe(true);
+    expect(r.findings.find((f) => f.id === 'fd-ferritin')!.decision).toBe('refer');
+    expect(r.findings.find((f) => f.id === 'fd-nlr')!.decision).toBe('monitor');
   });
 
   it('every pre-review action writes a timeline event', () => {

@@ -220,13 +220,13 @@ export function noteFinding(d: DemoData, reportId: string, findingId: string, no
   log(d, r.memberId, byId, 'finding_note', f.note ? `Note on ${markerOf(d, f)}: "${f.note}"` : `Note on ${markerOf(d, f)} removed`);
 }
 
-// Demo shortcut: every finding still open becomes Monitor.
-export function monitorRemaining(d: DemoData, reportId: string, byId: string) {
+// Accept the protocol's suggestion for every finding the NP hasn't decided yet.
+export function acceptSuggestions(d: DemoData, reportId: string, byId: string) {
   const r = report(d, reportId);
-  const open = r.findings.filter((f) => !f.decision);
+  const open = r.findings.filter((f) => !f.decision && f.suggested);
   if (!open.length || r.status !== 'draft') return;
-  for (const f of open) Object.assign(f, { decision: 'monitor', decidedById: byId, decidedAt: d.now });
-  log(d, r.memberId, byId, 'finding_decided', `${open.length} remaining findings set to Monitor: ${open.map((f) => markerOf(d, f)).join(', ')}`);
+  for (const f of open) Object.assign(f, { decision: f.suggested, decidedById: byId, decidedAt: d.now });
+  log(d, r.memberId, byId, 'finding_decided', `Protocol suggestions accepted for ${open.length} findings: ${open.map((f) => `${markerOf(d, f)} (${DECISION_LABEL[f.suggested!]})`).join(', ')}`);
 }
 
 export function editPlanItem(d: DemoData, reportId: string, itemId: string, field: PlanField, value: string, byId: string) {
