@@ -10,10 +10,10 @@ import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
 import { ageYears, fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { nextSlots, type SlotKind } from '../../lib/slots';
-import { fmtAnswer } from '../../lib/intakeFormat';
+import { detailsKey, fmtAnswer } from '../../lib/intakeFormat';
 import { SourceDialog, fmtValue } from '../../components/results';
 import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
-import type { Result, StaffRole } from '../../types';
+import type { IntakeValue, Result, StaffRole } from '../../types';
 import NotFound from './NotFound';
 
 type Tab = 'overview' | 'timeline' | 'forms' | 'intake' | 'results' | 'report' | 'notes' | 'orders' | 'sage';
@@ -388,6 +388,12 @@ function RescheduleDialog({ kind, current, firstName, onClose, onSave }: { kind:
   );
 }
 
+// The member's optional "Add details" note, shown under the answer it belongs to.
+function AnswerDetails({ v }: { v: IntakeValue | undefined }) {
+  if (typeof v !== 'string' || !v.trim()) return null;
+  return <dd className="mt-1 border-l-2 border-line pl-2 text-plum-900"><span className="text-xs text-muted">Member's details: </span>{v}</dd>;
+}
+
 function IntakeTab({ memberId }: { memberId: string }) {
   const s = useDemo();
   const ans = s.intake[memberId] ?? {};
@@ -405,7 +411,7 @@ function IntakeTab({ memberId }: { memberId: string }) {
           <div className="mt-4 rounded-lg bg-cream-100 p-4">
             <h3 className="mb-2 text-sm font-semibold text-plum-900">Worth knowing first</h3>
             <dl className="grid gap-x-6 gap-y-2 text-sm md:grid-cols-2">
-              {pinned.map((q) => <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className={q.safety && ans[q.id] === 'Yes' ? 'font-semibold text-danger-fg' : 'text-plum-900'}>{fmtAnswer(ans[q.id])}</dd></div>)}
+              {pinned.map((q) => <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className={q.safety && ans[q.id] === 'Yes' ? 'font-semibold text-danger-fg' : 'text-plum-900'}>{fmtAnswer(ans[q.id])}</dd><AnswerDetails v={ans[detailsKey(q.id)]} /></div>)}
             </dl>
           </div>
         )}
@@ -418,7 +424,7 @@ function IntakeTab({ memberId }: { memberId: string }) {
             {any && (
               <dl className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
                 {sec.questions.filter((q) => ans[q.id] !== undefined && fmtAnswer(ans[q.id]) !== '—').map((q) => (
-                  <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className="text-plum-900">{fmtAnswer(ans[q.id])}</dd></div>
+                  <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className="text-plum-900">{fmtAnswer(ans[q.id])}</dd><AnswerDetails v={ans[detailsKey(q.id)]} /></div>
                 ))}
               </dl>
             )}

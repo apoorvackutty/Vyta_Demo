@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
-import { FOLLOW_UPS, GRID_SHORT, ORDERED_SINGLE, isShown, toggleMulti } from '../../lib/intakeFlow';
-import { GRID_OPTIONS } from '../../lib/intakeFormat';
+import { DETAILS, FOLLOW_UPS, GRID_SHORT, ORDERED_SINGLE, isShown, toggleMulti, wantsDetails } from '../../lib/intakeFlow';
+import { GRID_OPTIONS, detailsKey } from '../../lib/intakeFormat';
+import { buildScenario } from '../scenarios';
+import * as ops from '../ops';
 
 const QS = INTAKE.flatMap((s) => s.questions);
 const byId = Object.fromEntries(QS.map((q) => [q.id, q]));
@@ -41,5 +43,37 @@ describe('intake display rules', () => {
 
   it('grid short labels line up with the stored values', () => {
     expect(GRID_SHORT).toHaveLength(GRID_OPTIONS.length);
+  });
+});
+
+describe('optional answer details', () => {
+  it('only offers details on choice questions that have no source follow-up asking the same', () => {
+    for (const id of Object.keys(DETAILS)) {
+      expect(['single', 'multi']).toContain(byId[id]?.type);
+      // Q09's source follow-up (Q10) only covers "Other", so its details are limited to the named surgeries.
+      if (id !== 'Q09') expect(Object.values(FOLLOW_UPS).some((f) => f.parent === id)).toBe(false);
+    }
+  });
+
+  it('shows Q09 details for a named surgery, not for None or Other alone', () => {
+    expect(wantsDetails('Q09', { Q09: ['Hysterectomy'] })).toBe(true);
+    expect(wantsDetails('Q09', { Q09: ['None'] })).toBe(false);
+    expect(wantsDetails('Q09', { Q09: ['Other gynecologic or pelvic surgery'] })).toBe(false);
+    expect(wantsDetails('Q46', { Q46: 'Yes' })).toBe(true);
+    expect(wantsDetails('Q46', { Q46: 'No' })).toBe(false);
+    expect(wantsDetails('Q46', { Q46: 'No', Q46_more: 'typed earlier' })).toBe(true);
+    expect(wantsDetails('Q02', { Q02: ['Stress or burnout'] })).toBe(false);
+  });
+
+  it('details are stored beside the answer, survive skip-to-end, and do not count towards progress', () => {
+    const d = buildScenario('intake_stalled');
+    const before = d.assignments.find((a) => a.memberId === 'm-testelle' && a.formId === 'f-intake')!.progress;
+    ops.saveIntake(d, 'm-testelle', 's1', { [detailsKey('Q09')]: '2019, fibroids' }, false);
+    const a = d.assignments.find((x) => x.memberId === 'm-testelle' && x.formId === 'f-intake')!;
+    expect(a.progress).toBe(before);
+    ops.skipIntakeToEnd(d, 'm-testelle', { Q46: 'Yes', Q46_more: 'Anxiety, 2021' });
+    expect(d.intake['m-testelle'].Q09_more).toBe('2019, fibroids');
+    expect(d.intake['m-testelle'].Q46_more).toBe('Anxiety, 2021');
+    expect(a.status).toBe('signed');
   });
 });

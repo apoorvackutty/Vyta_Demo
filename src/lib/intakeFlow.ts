@@ -1,5 +1,6 @@
 // How the member app presents intake questions. Display only: question IDs, wording and stored answer values stay as in data/intake.ts.
 import type { IntakeQuestion, IntakeValue } from '../types';
+import { detailsKey } from './intakeFormat';
 
 // Single-choice questions whose options run in order (low to high), shown as a slider.
 export const ORDERED_SINGLE = new Set(['Q03', 'Q04', 'Q29', 'Q30', 'Q34', 'Q37', 'Q41', 'Q45']);
@@ -66,3 +67,27 @@ export const TEXT_HINTS: Record<string, TextHint> = {
 
 // Display label for an ordered option: "2 = Often disruptive" reads as "Often disruptive" under the slider.
 export const stopLabel = (o: string) => o.replace(/^\d+\s*=\s*/, '');
+
+// Optional "Add details" box under clinically meaningful choice answers. Only where no source follow-up already asks.
+// Shows once she picks anything other than "None" / "No" (or the narrower rule given).
+const SURGERIES = ['Hysterectomy', 'Oophorectomy', 'Endometrial ablation'];
+export const DETAILS: Record<string, { hint: string; when?: (v: IntakeValue | undefined) => boolean }> = {
+  // "Other gynecologic or pelvic surgery" already opens Q10, so details cover the named surgeries.
+  Q09: { hint: 'When, and why? Any complications?', when: (v) => Array.isArray(v) && v.some((x) => SURGERIES.includes(x)) },
+  Q32: { hint: 'Since when? Anything that helps or makes it worse?' },
+  Q35: { hint: 'What kind of support, and how often?' },
+  Q40: { hint: 'How often? Any foods or times that trigger it?' },
+  Q46: { hint: 'Which diagnosis, and when? Any treatment?' },
+  Q58: { hint: 'Anything you would like your care team to know?' },
+  Q81: { hint: 'What happened, and when? Any treatment?' },
+  Q83: { hint: "What's worrying you?" },
+};
+
+export function wantsDetails(qid: string, ans: Record<string, IntakeValue>) {
+  const d = DETAILS[qid];
+  if (!d) return false;
+  if (hasAnswer(ans[detailsKey(qid)])) return true;
+  const v = ans[qid];
+  if (d.when) return d.when(v);
+  return Array.isArray(v) ? v.some((x) => x !== 'None') : v === 'Yes';
+}

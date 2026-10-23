@@ -5,6 +5,7 @@ import type {
 } from '../types';
 import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION, TESTELLE_INTAKE } from '../data/seed';
 import { INTAKE } from '../data/intake';
+import { detailsKey } from '../lib/intakeFormat';
 import { fmtDateTime, fmtDate, toMs } from '../lib/time';
 import { baselineLabs, draftFindings, draftPlan, BASELINE_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
 import { STAFF } from '../data/seed';
@@ -99,7 +100,8 @@ export function saveIntake(d: DemoData, memberId: string, sectionId: string, ans
   const done = new Set(d.intakeDone[memberId] ?? []);
   if (sectionComplete) done.add(sectionId);
   d.intakeDone[memberId] = [...done];
-  const count = Object.values(d.intake[memberId]).filter(answered).length;
+  // Count questions only: optional "_more" details don't move the progress bar.
+  const count = INTAKE.flatMap((x) => x.questions).filter((q) => answered(d.intake[memberId][q.id])).length;
   a.progress = Math.min(1, count / TOTAL_Q);
   if (a.status === 'sent') {
     a.status = 'in_progress';
@@ -344,7 +346,7 @@ export function skipIntakeToEnd(d: DemoData, memberId: string, current: Record<s
   const chosen = { ...(d.intake[memberId] ?? {}), ...current };
   for (const sec of INTAKE) {
     const answers = Object.fromEntries(
-      sec.questions.map((q) => [q.id, chosen[q.id] ?? TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined),
+      sec.questions.flatMap((q) => [[q.id, chosen[q.id] ?? TESTELLE_INTAKE[q.id]], [detailsKey(q.id), chosen[detailsKey(q.id)]]]).filter(([, v]) => v !== undefined),
     );
     saveIntake(d, memberId, sec.id, answers, true);
   }
