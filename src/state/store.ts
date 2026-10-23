@@ -11,6 +11,12 @@ interface DemoStore extends DemoData {
   scenario: ScenarioId;
   role: Role;
   split: boolean;
+  // Cosmetic sign-in (TRD §6: no real auth in the demo). Staff and member sessions are separate.
+  staffSignedIn: boolean;
+  memberSignedIn: boolean;
+  signInStaff: (r: Role) => void;
+  signInMember: () => void;
+  signOut: (who: 'staff' | 'member') => void;
   toasts: Toast[];
   setRole: (r: Role) => void;
   setSplit: (v: boolean) => void;
@@ -38,11 +44,17 @@ export const useDemo = create<DemoStore>()(
       scenario: 'day0',
       role: 'guide',
       split: false,
+      staffSignedIn: false,
+      memberSignedIn: false,
+      signInStaff: (role) => set({ role, staffSignedIn: true }),
+      signInMember: () => set({ memberSignedIn: true }),
+      signOut: (who) => set(who === 'staff' ? { staffSignedIn: false } : { memberSignedIn: false }),
       toasts: [],
-      setRole: (role) => set({ role }),
+      // The demo bar's role switcher is the presenter's backstage door, so it signs you in.
+      setRole: (role) => set(role === 'member' ? { role } : { role, staffSignedIn: true }),
       setSplit: (split) => set({ split }),
       loadScenario: (id) => set({ ...buildScenario(id), scenario: id, toasts: [] }),
-      reset: () => set({ ...buildScenario('day0'), scenario: 'day0', role: 'guide', split: false, toasts: [] }),
+      reset: () => set({ ...buildScenario('day0'), scenario: 'day0', role: 'guide', split: false, toasts: [], staffSignedIn: false, memberSignedIn: false }),
       run: (fn, toast, key) => {
         const draft = pickData(get());
         fn(draft);

@@ -6,9 +6,10 @@ import { ArrowLeft, Check, FileText, Loader2, MessageSquarePlus, Pencil, RotateC
 import { useDemo, ops } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
 import { BandChip } from '../../components/domain';
+import { SourceDialog, fmtValue } from '../../components/results';
 import { Button, Card, Chip, Dialog, EmptyState, Field, ProgressBar, inputCls } from '../../components/ui';
 import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
-import { BAND_RANK, PLAN_GROUPS, FIELD_LABEL, isLifestyle, LAB_SOURCE } from '../../data/protocol';
+import { BAND_RANK, PLAN_GROUPS, FIELD_LABEL, isLifestyle } from '../../data/protocol';
 import { canApprovePreReview, unfilled, needsReview } from '../../state/guards';
 import { fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import type { Finding, PlanField, PlanItem, Report, Result } from '../../types';
@@ -22,7 +23,6 @@ const CHANGE: Record<PlanItem['change'], { label: string; tone: 'info' | 'neutra
 };
 const SUPPLIER = { compounding: 'Compounding pharmacy', retail: 'Retail pharmacy', fullscript: 'Fullscript', peptide_supplier: 'Peptide supplier' } as const;
 const SEND_BACK_REASONS = ['Use a different protocol template', 'Labs incomplete: re-run with the full panel', 'Draft is for the wrong program', 'Other'];
-const fmtValue = (r: Result) => `${typeof r.value === 'number' ? r.value.toLocaleString('en-US') : r.value ?? '—'}${r.unit ? ` ${r.unit}` : ''}`;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const staffName = (sid?: string) => STAFF.find((s) => s.id === sid)?.name ?? '';
 
@@ -220,30 +220,6 @@ function FindingRow({ finding: f, result: r, reportId, canEdit, onSource }: { fi
         </form>
       )}
     </li>
-  );
-}
-
-function SourceDialog({ result, results, onClose }: { result: Result | null; results: Result[]; onClose: () => void }) {
-  const s = useDemo();
-  if (!result) return null;
-  const visit = s.visits.find((v) => v.id === result.visitId);
-  const panel = results.filter((r) => r.panel === result.panel);
-  return (
-    <Dialog open title={`Source · ${result.source.replace(`${LAB_SOURCE} `, 'Lab report ')}`} onClose={onClose} footer={<Button onClick={onClose}>Done</Button>}>
-      <p className="text-sm text-muted">{LAB_SOURCE} · {result.panel} panel{visit ? ` · drawn ${fmtDate(visit.at)}` : ''}</p>
-      <table className="w-full text-sm">
-        <thead className="text-left text-[13px] text-muted"><tr><th className="pb-1 font-medium">Marker</th><th className="font-medium">Value</th><th className="font-medium">Target</th></tr></thead>
-        <tbody>
-          {panel.map((r) => (
-            <tr key={r.id} className={clsx('border-t border-line', r.id === result.id && 'bg-plum-100 font-semibold')} aria-current={r.id === result.id ? 'true' : undefined}>
-              <td className="py-1.5 pl-1 text-plum-900">{r.marker}</td>
-              <td className="tabular-nums text-plum-900">{fmtValue(r)}</td>
-              <td className="text-muted">{r.target}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Dialog>
   );
 }
 

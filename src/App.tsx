@@ -9,6 +9,8 @@ import Members from './screens/staff/Members';
 import MemberRecord from './screens/staff/MemberRecord';
 import Onboard from './screens/staff/Onboard';
 import PreReview from './screens/staff/PreReview';
+import NotFound from './screens/staff/NotFound';
+import { StaffSignIn } from './screens/SignIn';
 import MemberApp from './screens/member/MemberApp';
 
 function StaffRoutes() {
@@ -25,7 +27,8 @@ function StaffRoutes() {
           <Route path="/staff/:role/member/:id" element={<MemberRecord />} />
           <Route path="/staff/:role/onboard/:id" element={<Onboard />} />
           <Route path="/staff/:role/pre-review/:id" element={<PreReview />} />
-          <Route path="*" element={<Navigate to="/staff/guide/today" replace />} />
+          <Route path="/" element={<Navigate to={`/staff/${urlRole}/today`} replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </ErrorBoundary>
     </StaffShell>
@@ -33,7 +36,7 @@ function StaffRoutes() {
 }
 
 function Stage() {
-  const { role, split } = useDemo();
+  const { role, split, staffSignedIn } = useDemo();
   if (role === 'member') {
     return (
       <div className="flex min-h-[calc(100vh-44px)] items-start justify-center bg-cream-100 py-8">
@@ -41,6 +44,7 @@ function Stage() {
       </div>
     );
   }
+  if (!staffSignedIn) return <StaffSignIn />;
   if (split) {
     return (
       <div className="flex">

@@ -1,12 +1,12 @@
 import { clsx } from 'clsx';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutList, Users, RotateCcw, Columns2 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { LayoutList, Users, RotateCcw, Columns2, LogOut, Search } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import type { Role, StaffRole } from '../types';
 import { useDemo } from '../state/store';
 import { SCENARIOS, type ScenarioId } from '../state/scenarios';
 import { STAFF, STAFF_BY_ROLE } from '../data/seed';
-import { fmtDateTime } from '../lib/time';
+import { fmtDateTime, fmtDate } from '../lib/time';
 import { Avatar } from './ui';
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -41,7 +41,7 @@ export function DemoBar() {
         </button>
       )}
       <span className="ml-auto opacity-80">Clinic time: {fmtDateTime(now)}</span>
-      <button onClick={() => { reset(); nav('/staff/guide/today'); }} className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-plum-800"><RotateCcw size={14} /> Reset demo</button>
+      <button onClick={() => { reset(); nav('/staff/guide/today'); }} title="Back to Day 0 and the sign-in screen" className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-plum-800"><RotateCcw size={14} /> Reset demo</button>
       <span className="rounded bg-plum-800 px-2 py-0.5 text-[11px] opacity-80">Fictional data</span>
     </div>
   );
@@ -53,8 +53,43 @@ export function useStaffRole(): StaffRole {
   return (['guide', 'ma', 'np', 'coach', 'admin'].includes(role ?? '') ? role : 'guide') as StaffRole;
 }
 
+// Top-bar search (SCREENS §1): type a name, Enter or click opens her record.
+function MemberSearch({ role }: { role: StaffRole }) {
+  const { members } = useDemo();
+  const nav = useNavigate();
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const hits = q.trim() ? members.filter((m) => m.name.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6) : [];
+  const go = (id: string) => { nav(`/staff/${role}/member/${id}`); setQ(''); setOpen(false); };
+  return (
+    <div className="relative w-full max-w-sm" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+      <label htmlFor="member-search" className="sr-only">Search members</label>
+      <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+      <input id="member-search" type="search" value={q} placeholder="Search members" autoComplete="off"
+        role="combobox" aria-expanded={open && !!q.trim()} aria-controls="member-search-list"
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) go(hits[0].id); if (e.key === 'Escape') { setQ(''); setOpen(false); } }}
+        className="h-9 w-full rounded-lg border border-line bg-cream-100 pl-9 pr-3 text-sm text-plum-900 placeholder:text-muted focus:border-plum-700 focus:outline-none focus:ring-2 focus:ring-terracotta-500/40" />
+      {open && q.trim() && (
+        <ul id="member-search-list" role="listbox" className="absolute left-0 right-0 top-full z-40 mt-1 overflow-hidden rounded-lg border border-line bg-paper shadow-card">
+          {hits.length === 0
+            ? <li className="px-3 py-2.5 text-sm text-muted">No member matches “{q.trim()}”. Check the spelling, or search by first name.</li>
+            : hits.map((m) => (
+              <li key={m.id} role="option" aria-selected="false">
+                <button onClick={() => go(m.id)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-plum-100 focus:bg-plum-100 focus:outline-none">
+                  <Avatar name={m.name} size={24} /><span className="flex-1 text-plum-900">{m.name}</span><span className="text-xs text-muted">{m.step}</span>
+                </button>
+              </li>
+            ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function StaffShell({ children }: { children: ReactNode }) {
   const role = useStaffRole();
+  const { now, signOut, toast } = useDemo();
   const me = STAFF.find((s) => s.id === STAFF_BY_ROLE[role])!;
   const link = ({ isActive }: { isActive: boolean }) => clsx('flex items-center gap-3 rounded-lg px-3 py-2 text-sm', isActive ? 'bg-paper/10 font-semibold text-paper' : 'text-cream-200 hover:bg-paper/5');
   return (
@@ -65,12 +100,21 @@ export function StaffShell({ children }: { children: ReactNode }) {
           <NavLink to={`/staff/${role}/today`} className={link}><LayoutList size={18} /> Today</NavLink>
           <NavLink to={`/staff/${role}/members`} className={link}><Users size={18} /> Members</NavLink>
         </nav>
-        <div className="mt-auto flex items-center gap-2 rounded-lg bg-paper/5 p-2">
-          <Avatar name={me.name} size={30} />
-          <span className="text-xs leading-tight text-cream-100"><span className="block font-semibold">{me.name}</span>{me.title}</span>
+        <div className="mt-auto rounded-lg bg-paper/5 p-2">
+          <div className="flex items-center gap-2">
+            <Avatar name={me.name} size={30} />
+            <span className="text-xs leading-tight text-cream-100"><span className="block font-semibold">{me.name}</span>{me.title}</span>
+          </div>
+          <button onClick={() => { signOut('staff'); toast(`Signed out. See you soon, ${me.name.split(' ')[0]}`); }} className="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-cream-200 hover:bg-paper/10"><LogOut size={14} /> Sign out</button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 bg-cream-100">{children}</main>
+      <main className="min-w-0 flex-1 bg-cream-100">
+        <div className="flex items-center gap-4 border-b border-line bg-paper px-6 py-2">
+          <MemberSearch role={role} />
+          <span className="ml-auto whitespace-nowrap text-sm text-muted">Today · {fmtDate(now)}</span>
+        </div>
+        {children}
+      </main>
     </div>
   );
 }

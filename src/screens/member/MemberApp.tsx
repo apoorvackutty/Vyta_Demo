@@ -1,9 +1,10 @@
 // Member app (phone). Uses a small in-app router so it can sit next to the staff view.
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { clsx } from 'clsx';
-import { Home as HomeIcon, ClipboardCheck, FileText, Sparkles, Menu, ChevronLeft, ChevronRight, Check, Bell, X, Lock, Droplet, CalendarDays } from 'lucide-react';
+import { Home as HomeIcon, ClipboardCheck, FileText, Sparkles, Menu, ChevronLeft, ChevronRight, Check, Bell, X, Lock, Droplet, CalendarDays, LogOut, AlertCircle } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
-import { Button, Chip, ProgressBar, inputCls } from '../../components/ui';
+import { Avatar, Button, Chip, ProgressBar, inputCls } from '../../components/ui';
+import { MemberSignIn } from '../SignIn';
 import { FORMS, STAFF, BLOOD_DRAW_PREP } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
@@ -29,7 +30,9 @@ function screenFor(path: string): ReactNode {
     case 'report': return <Locked title="Report" body="Your Vyta Health Assessment appears here on Your Vyta Day, after your nurse practitioner reviews it with you." />;
     case 'sage': return <Sage />;
     case 'more': return <More />;
-    default: return <Home />;
+    case 'thanks': return <Thanks kind={b} />;
+    case 'home': case '': case undefined: return <Home />;
+    default: return <MemberNotFound />;
   }
 }
 
@@ -38,7 +41,10 @@ export default function MemberApp() {
   return <MemberAppInner key={scenario} />;
 }
 function MemberAppInner() {
+  const signedIn = useDemo((s) => s.memberSignedIn);
+  const name = useDemo((s) => s.members.find((m) => m.id === MEMBER_ID)?.name ?? '');
   const [path, setPath] = useState('/home');
+  if (!signedIn) return <MemberSignIn name={name} />;
   const go = (p: string) => { setPath(p); requestAnimationFrame(() => document.getElementById('member-scroll')?.scrollTo({ top: 0 })); };
   return (
     <NavCtx.Provider value={{ path, go }}>
@@ -52,14 +58,16 @@ function MemberAppInner() {
 
 function TabBar() {
   const { path, go } = useContext(NavCtx);
+  const unread = useDemo((s) => s.notices.filter((n) => n.memberId === MEMBER_ID && !n.read).length);
   const tabs: [string, string, ReactNode][] = [['/home', 'Home', <HomeIcon size={20} />], ['/plan', 'My plan', <ClipboardCheck size={20} />], ['/report', 'Report', <FileText size={20} />], ['/sage', 'SAGE', <Sparkles size={20} />], ['/more', 'More', <Menu size={20} />]];
   return (
     <nav aria-label="Member app" className="flex border-t border-line bg-paper pb-2">
       {tabs.map(([to, label, icon]) => {
         const active = to === '/home' ? path === '/home' : path.startsWith(to);
         return (
-          <button key={to} onClick={() => go(to)} aria-current={active ? 'page' : undefined} className={clsx('flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px]', active ? 'font-semibold text-plum-700' : 'text-muted')}>
+          <button key={to} onClick={() => go(to)} aria-current={active ? 'page' : undefined} className={clsx('relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px]', active ? 'font-semibold text-plum-700' : 'text-muted')}>
             {icon}{label}
+            {to === '/home' && unread > 0 && <span className="absolute right-[22%] top-1.5 min-w-[18px] rounded-full bg-terracotta-700 px-1 text-[10px] font-semibold leading-[18px] text-paper">{unread}<span className="sr-only"> new</span></span>}
           </button>
         );
       })}
@@ -216,12 +224,13 @@ function Forms() {
 }
 
 function FormView({ aid }: { aid: string }) {
-  const { s, m, forms } = useMember();
+  const { s, m, forms, consents } = useMember();
   const nav = useNavigate();
   const a = forms.find((x) => x.id === aid);
   const [name, setName] = useState('');
   const [read, setRead] = useState(false);
-  if (!a) return null;
+  if (!a) return <MemberNotFound back="/forms" />;
+  const lastOne = consents.every((c) => c.id === a.id || c.status === 'signed');
   const f = FORMS.find((x) => x.id === a.formId)!;
   return (
     <div className="pb-6">
@@ -252,7 +261,7 @@ function FormView({ aid }: { aid: string }) {
               {!read && name.trim().length < 2 ? 'Tick the box and add your name to sign.' : !read ? 'Tick the box above to sign.' : 'Add your name to sign.'}
             </p>
           )}
-          <Button size="lg" className="w-full" disabled={!read || name.trim().length < 2} onClick={() => { s.run((d) => ops.signForm(d, a.id, name.trim()), 'Signed · thank you'); nav('/forms'); }}>Sign</Button>
+          <Button size="lg" className="w-full" disabled={!read || name.trim().length < 2} onClick={() => { s.run((d) => ops.signForm(d, a.id, name.trim()), 'Signed · thank you'); nav(lastOne ? '/thanks/consents' : '/forms'); }}>Sign</Button>
         </div>
       )}
     </div>
@@ -275,7 +284,7 @@ function Intake() {
           <ProgressBar value={intake.progress ?? 0} label="Intake progress" className="mt-3" />
           <p className="mt-1.5 text-[13px] text-muted">{done.length} of {INTAKE.length} sections done</p>
           {next && <Button size="lg" className="mt-4 w-full" onClick={() => nav(`/intake/${next.id}`)}>{done.length || Object.keys(ans).length ? 'Pick up where you left off' : 'Start'}</Button>}
-          {next && <div className="mt-3"><DemoControls onSkip={() => s.run((d) => ops.skipIntakeToEnd(d, MEMBER_ID), 'Intake complete')} /></div>}
+          {next && <div className="mt-3"><DemoControls onSkip={() => { s.run((d) => ops.skipIntakeToEnd(d, MEMBER_ID), 'Intake complete'); nav('/thanks/intake'); }} /></div>}
         </div>
         <ol className="mt-4 divide-y divide-line rounded-mcard bg-paper shadow-card">
           {INTAKE.map((sec, i) => {
@@ -303,8 +312,20 @@ function IntakeSectionView({ sid }: { sid: string }) {
   const idx = INTAKE.findIndex((x) => x.id === sid);
   const sec = INTAKE[idx];
   const [ans, setAns] = useState<Record<string, IntakeValue>>(() => Object.fromEntries((sec?.questions ?? []).map((q) => [q.id, (s.intake[MEMBER_ID] ?? {})[q.id]]).filter(([, v]) => v !== undefined)));
-    if (!sec) return null;
-  const set = (id: string, v: IntakeValue) => setAns((a) => ({ ...a, [id]: v }));
+  const [check, setCheck] = useState<'none' | 'blanks' | 'safety'>('none');
+  if (!sec) return <MemberNotFound back="/intake" />;
+  const set = (id: string, v: IntakeValue) => { setAns((a) => ({ ...a, [id]: v })); if (check === 'safety') setCheck('none'); };
+  // Free-text questions are follow-ups ("if yes, tell us more"), so only choice questions count as blank.
+  const blank = sec.questions.filter((q) => q.type !== 'text' && !hasAnswer(ans[q.id]));
+  const safetyBlank = blank.filter((q) => q.safety);
+  const scrollTo = (qid?: string) => qid && document.getElementById(`q-${qid}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const advance = () => {
+    if (safetyBlank.length) { setCheck('safety'); scrollTo(safetyBlank[0].id); return; }
+    if (blank.length && check !== 'blanks') { setCheck('blanks'); return; }
+    save(true);
+    const allDone = useDemo.getState().intakeDone[MEMBER_ID]?.length === INTAKE.length;
+    nav(allDone ? '/thanks/intake' : nextSec ? `/intake/${nextSec.id}` : '/intake');
+  };
   const save = (complete: boolean) => s.run((d) => ops.saveIntake(d, MEMBER_ID, sec.id, ans, complete), complete ? `Section ${idx + 1} saved` : 'Saved. Come back any time');
   const nextSec = INTAKE[idx + 1];
   return (
@@ -314,15 +335,28 @@ function IntakeSectionView({ sid }: { sid: string }) {
         <h2 className="font-display text-[26px] font-semibold leading-tight text-plum-700">{sec.title}</h2>
         <DemoControls
           onFill={() => setAns((cur) => ({ ...Object.fromEntries(sec.questions.map((q) => [q.id, TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined)), ...Object.fromEntries(Object.entries(cur).filter(([, v]) => v !== undefined && v !== '')) }))}
-          onSkip={() => { s.run((d) => ops.skipIntakeToEnd(d, MEMBER_ID, ans), 'Intake complete'); nav('/intake'); }}
+          onSkip={() => { s.run((d) => ops.skipIntakeToEnd(d, MEMBER_ID, ans), 'Intake complete'); nav('/thanks/intake'); }}
         />
       </div>
       <div className="space-y-4 p-4">
-        {sec.questions.map((q) => <QuestionInput key={q.id} q={q} value={ans[q.id]} onChange={(v) => set(q.id, v)} />)}
+        {sec.questions.map((q) => <QuestionInput key={q.id} q={q} value={ans[q.id]} onChange={(v) => set(q.id, v)}
+          flag={check === 'safety' && q.safety && !hasAnswer(ans[q.id]) ? 'Please answer this one' : check === 'blanks' && blank.includes(q) ? 'Not answered yet' : undefined} />)}
       </div>
-      <div className="sticky bottom-0 flex gap-2 border-t border-line bg-cream-200/95 p-4 backdrop-blur">
-        <Button variant="secondary" size="lg" className="flex-1" onClick={() => { save(false); nav('/home'); }}>Save & exit</Button>
-        <Button size="lg" className="flex-1" onClick={() => { save(true); nav(nextSec ? `/intake/${nextSec.id}` : '/intake'); }}>{nextSec ? 'Next section' : 'Finish intake'}</Button>
+      <div className="sticky bottom-0 border-t border-line bg-cream-200/95 p-4 backdrop-blur">
+        {check === 'safety' && (
+          <p role="alert" className="mb-3 flex gap-2 rounded-lg bg-danger-bg p-3 text-[13px] text-danger-fg"><AlertCircle size={16} className="mt-0.5 shrink-0" />
+            Please answer the {safetyBlank.length > 1 ? `${safetyBlank.length} safety questions` : 'safety question'}. They help your care team keep you safe.</p>
+        )}
+        {check === 'blanks' && (
+          <div role="alert" className="mb-3 rounded-lg bg-watch-bg p-3 text-[13px] text-watch-fg">
+            <p>You've left {blank.length} question{blank.length > 1 ? 's' : ''} blank. That's fine: you can come back to {blank.length > 1 ? 'them' : 'it'} any time.</p>
+            <button type="button" className="mt-1 min-h-[32px] font-medium underline underline-offset-2" onClick={() => scrollTo(blank[0]?.id)}>Show me</button>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Button variant="secondary" size="lg" className="flex-1" onClick={() => { save(false); nav('/home'); }}>Save & exit</Button>
+          <Button size="lg" className="flex-1" onClick={advance}>{check === 'blanks' ? 'Continue anyway' : nextSec ? 'Next section' : 'Finish intake'}</Button>
+        </div>
       </div>
     </div>
   );
@@ -336,9 +370,21 @@ function Pill({ selected, onClick, children }: { selected: boolean; onClick: () 
   );
 }
 
-function QuestionInput({ q, value, onChange }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void }) {
+function hasAnswer(v: IntakeValue | undefined) {
+  if (v === undefined || v === null || v === '') return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v).length > 0;
+  return true;
+}
+
+function QuestionInput({ q, value, onChange, flag }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void; flag?: string }) {
   const label = <p className="mb-2 text-[15px] font-medium text-plum-900">{q.text}</p>;
-  const box = (c: ReactNode) => <fieldset className="rounded-mcard bg-paper p-4 shadow-card"><legend className="sr-only">{q.text}</legend>{label}{c}</fieldset>;
+  const box = (c: ReactNode) => (
+    <fieldset id={`q-${q.id}`} className={clsx('scroll-mt-20 rounded-mcard bg-paper p-4 shadow-card', flag && 'ring-2 ring-watch-fg')}>
+      <legend className="sr-only">{q.text}</legend>{label}{c}
+      {flag && <p className="mt-2 text-[13px] font-medium text-watch-fg">{flag}</p>}
+    </fieldset>
+  );
   if (q.type === 'single') return box(<div className="flex flex-wrap gap-2">{q.options!.map((o) => <Pill key={String(o)} selected={value === o} onClick={() => onChange(String(o))}>{o}</Pill>)}</div>);
   if (q.type === 'multi') {
     const arr = Array.isArray(value) ? value : [];
@@ -421,6 +467,15 @@ function Status() {
           </li>
         ))}
       </ol>
+      <section className="mx-4 rounded-mcard bg-paper p-4 shadow-card" aria-label="Your care team">
+        <h2 className="mb-3 text-[15px] font-semibold text-plum-900">Your care team</h2>
+        <ul className="space-y-3">
+          {[m.guideId, m.npId, m.coachId].map((id) => {
+            const p = STAFF.find((x) => x.id === id)!;
+            return <li key={id} className="flex items-center gap-3"><Avatar name={p.name} size={40} /><span className="text-[14px] text-plum-900"><span className="block font-semibold">{p.name}</span><span className="text-muted">{p.title}</span></span></li>;
+          })}
+        </ul>
+      </section>
     </div>
   );
 }
@@ -453,6 +508,7 @@ function Sage() {
 
 function More() {
   const nav = useNavigate();
+  const { signOut, toast } = useDemo();
   const items: [string, string][] = [['Your goals and milestones', '/goals'], ['Forms', '/forms'], ['Intake', '/intake'], ['Blood draw', '/blood-draw'], ['Where things are', '/status']];
   return (
     <div>
@@ -460,6 +516,43 @@ function More() {
       <ul className="m-4 divide-y divide-line rounded-mcard bg-paper shadow-card">
         {items.map(([l, to]) => <li key={to}><button onClick={() => nav(to)} className="flex min-h-[56px] w-full items-center justify-between px-4 text-left text-[15px] text-plum-900">{l}<ChevronRight size={18} className="text-muted" /></button></li>)}
       </ul>
+      <button onClick={() => { signOut('member'); toast("You're signed out"); }} className="mx-4 flex min-h-[56px] w-[calc(100%-2rem)] items-center gap-3 rounded-mcard bg-paper px-4 text-left text-[15px] text-terracotta-700 shadow-card"><LogOut size={18} /> Sign out</button>
+    </div>
+  );
+}
+
+// Peak moments get a screen of their own, not just a toast (BRAND_UI §5, peak-end).
+const staffFirst = (id: string) => STAFF.find((x) => x.id === id)?.name.split(' ')[0] ?? 'Your care team';
+
+function Thanks({ kind }: { kind?: string }) {
+  const { m, intake, draw } = useMember();
+  const nav = useNavigate();
+  const first = m.name.split(' ')[0];
+  const copy = kind === 'consents'
+    ? { title: `Thank you, ${first}`, body: 'All your consents are signed. Your care team can see them now.', next: intake?.status === 'signed' ? undefined : { label: 'Start your intake', to: '/intake' } }
+    : { title: `Thank you, ${first}`, body: `Your intake is complete. ${staffFirst(m.guideId)} and ${staffFirst(m.npId)} will read it before your visit, so your time with them goes on what matters to you.`,
+      next: draw && draw.status !== 'done' ? { label: 'See your blood draw', to: '/blood-draw' } : { label: 'See where things are', to: '/status' } };
+  return (
+    <div className="flex min-h-full flex-col items-center justify-center gap-4 px-8 py-10 text-center">
+      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-plum-700 text-paper"><Check size={32} aria-hidden="true" /></span>
+      <h1 className="font-display text-[32px] font-semibold leading-tight text-plum-700">{copy.title}</h1>
+      <p className="text-[15px] text-plum-900">{copy.body}</p>
+      <div className="mt-2 w-full space-y-2">
+        {copy.next && <Button size="lg" className="w-full" onClick={() => nav(copy.next!.to)}>{copy.next.label}</Button>}
+        <Button size="lg" variant={copy.next ? 'ghost' : 'primary'} className="w-full" onClick={() => nav('/home')}>Back to home</Button>
+      </div>
+    </div>
+  );
+}
+
+function MemberNotFound({ back = '/home' }: { back?: string }) {
+  const nav = useNavigate();
+  return (
+    <div className="flex min-h-full flex-col items-center justify-center gap-3 px-8 text-center">
+      <img src="/assets/botanical-clover.png" alt="" className="h-24 w-24 object-contain mix-blend-multiply" />
+      <h1 className="font-display text-[26px] font-semibold text-plum-700">We couldn't find that</h1>
+      <p className="text-[15px] text-plum-900">It may have moved, or it isn't ready yet.</p>
+      <Button size="lg" className="mt-2 w-full" onClick={() => nav(back)}>Go back</Button>
     </div>
   );
 }

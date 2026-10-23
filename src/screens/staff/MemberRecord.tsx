@@ -1,7 +1,7 @@
 // S3 Member record: header, phase tracker, milestones, tabs.
 import { useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ArrowLeft, ClipboardCheck, Droplet, FileSignature, Send } from 'lucide-react';
+import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ClipboardCheck, Droplet, FileSignature, FileText, Send } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
 import { PhaseTracker, MilestoneBar, BandChip, PROGRAM_LABEL, MENO_LABEL } from '../../components/domain';
@@ -10,17 +10,35 @@ import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
 import { ageYears, fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { fmtAnswer } from '../../lib/intakeFormat';
+import { SourceDialog, fmtValue } from '../../components/results';
+import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
+import type { Result, StaffRole } from '../../types';
+import NotFound from './NotFound';
 
-type Tab = 'overview' | 'timeline' | 'forms' | 'intake' | 'results';
+type Tab = 'overview' | 'timeline' | 'forms' | 'intake' | 'results' | 'report' | 'notes' | 'orders' | 'sage';
+// Who sees which tab (SCREENS S3). Admin sees everything.
+const TAB_ROLES: Record<Tab, StaffRole[]> = {
+  overview: ['guide', 'ma', 'np', 'coach'], timeline: ['guide', 'ma', 'np', 'coach'], forms: ['guide', 'np'], intake: ['guide', 'np'],
+  results: ['np', 'ma'], report: ['np', 'coach', 'guide'], notes: ['np', 'coach', 'guide'], orders: ['np', 'ma'], sage: ['guide', 'np'],
+};
+const STATUS_WORDS: Record<string, string> = {
+  building: 'Draft building', draft: 'Waiting on NP pre-review', pre_reviewed: 'Waiting on Coach wording review', wording_checked: 'Wording checked',
+  ready_for_visit: 'Ready for Your Vyta Day', final_review: 'Final review', released: 'Released', withdrawn: 'Withdrawn',
+};
 
 export default function MemberRecord() {
   const role = useStaffRole();
   const { id = '' } = useParams();
   const nav = useNavigate();
   const s = useDemo();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [params, setParams] = useSearchParams();
+  const [source, setSource] = useState<Result | null>(null);
+  const allowed = (t: Tab) => role === 'admin' || TAB_ROLES[t].includes(role);
+  const asked = params.get('tab') as Tab | null;
+  const tab: Tab = asked && asked in TAB_ROLES && allowed(asked) ? asked : 'overview';
+  const setTab = (t: Tab) => setParams(t === 'overview' ? {} : { tab: t }, { replace: true });
   const m = s.members.find((x) => x.id === id);
-  if (!m) return <EmptyState title="Member not found" action={<Link className="text-terracotta-700 underline" to={`/staff/${role}/members`}>Back to members</Link>} />;
+  if (!m) return <NotFound title="Member not found" body="She may have been removed, or the link is out of date." />;
   const by = STAFF_BY_ROLE[role];
   const forms = s.assignments.filter((a) => a.memberId === m.id);
   const intake = forms.find((a) => a.formId === 'f-intake');
@@ -66,10 +84,11 @@ export default function MemberRecord() {
         {m.milestones.some((x) => x.selected) && m.phase !== 'join' && <div className="mt-5 max-w-md"><MilestoneBar milestones={m.milestones} /></div>}
       </Card>
 
-      <Tabs<Tab> label="Member record" value={tab} onChange={setTab} tabs={[
+      <Tabs<Tab> label="Member record" value={tab} onChange={setTab} tabs={([
         { id: 'overview', label: 'Overview' }, { id: 'timeline', label: 'Timeline' },
         { id: 'forms', label: 'Forms', badge: unsigned || undefined }, { id: 'intake', label: 'Intake' }, { id: 'results', label: 'Results' },
-      ]} />
+        { id: 'report', label: 'Report & plan' }, { id: 'notes', label: 'Notes' }, { id: 'orders', label: 'Orders' }, { id: 'sage', label: 'SAGE' },
+      ] as { id: Tab; label: string; badge?: number }[]).filter((t) => allowed(t.id))} />
 
       <div className="mt-5">
         {tab === 'overview' && (
@@ -133,6 +152,7 @@ export default function MemberRecord() {
 
         {tab === 'timeline' && (
           <Card className="p-5">
+            {events.length === 0 && <EmptyState title="Nothing yet" body="Every form, visit, call and approval shows here with who and when." />}
             <ol className="relative space-y-4 border-l border-line pl-5">
               {events.map((e) => (
                 <li key={e.id} className="relative">
@@ -185,6 +205,91 @@ export default function MemberRecord() {
 
         {tab === 'intake' && <IntakeTab memberId={m.id} />}
 
+        {tab === 'report' && (
+          <Card className="p-5">
+            {!report ? <EmptyState title="No report yet" body="The draft HEAL plan builds as soon as her lab results come in." /> : (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-semibold text-plum-900">Baseline report · v{report.version}</h2>
+                    <p className="text-sm text-muted">From the {report.protocol.toLowerCase()}{report.builtAt ? ` · built ${fmtDateTime(report.builtAt)}` : ''}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Chip tone={report.status === 'draft' || report.status === 'pre_reviewed' ? 'watch' : report.status === 'building' ? 'info' : 'ok'}>{STATUS_WORDS[report.status]}</Chip>
+                    {(role === 'np' || role === 'admin') && report.status !== 'building' && <Button size="sm" variant={report.status === 'draft' ? 'primary' : 'secondary'} onClick={() => nav(`/staff/${role}/pre-review/${m.id}`)}>{report.status === 'draft' ? 'Pre-review' : 'View draft'}</Button>}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold text-plum-900">Version history</h3>
+                  {s.approvals.filter((a) => a.reportId === report.id).length === 0
+                    ? <p className="text-sm text-muted">No reviews yet. Draft v1 is waiting on the NP.</p>
+                    : (
+                      <ul className="space-y-1.5 text-sm">
+                        {s.approvals.filter((a) => a.reportId === report.id).map((a) => (
+                          <li key={a.id} className="flex flex-wrap gap-x-2">
+                            <span className="font-medium text-plum-900">v{a.reportVersion}</span>
+                            <span className="text-plum-900">{a.outcome === 'approved' ? 'Pre-review approved' : `Sent back: "${a.reason}"`}</span>
+                            <span className="text-muted">· {staffName(a.byId)} · {fmtDateTime(a.at)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                </div>
+                {report.plan.length > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold text-plum-900">HEAL plan</h3>
+                    <div className="grid gap-x-8 gap-y-3 md:grid-cols-2">
+                      {PLAN_GROUPS.map((g) => {
+                        const items = report.plan.filter((i) => i.group === g.id);
+                        if (!items.length) return null;
+                        return (
+                          <div key={g.id}>
+                            <h4 className="mb-1 text-[13px] font-medium text-muted">{g.label}</h4>
+                            <ul className="space-y-1 text-sm">
+                              {items.map((i) => (
+                                <li key={i.id} className={i.removed ? 'text-muted line-through' : 'text-plum-900'}>
+                                  <span className="font-medium">{i.name}</span>{' '}
+                                  <span className="text-muted">{(isLifestyle(i.group) ? [i.dose] : [i.dose, i.form, i.frequency]).filter(Boolean).join(' · ') || 'Details to confirm'}</span>
+                                  {i.removed && <span className="sr-only"> (removed)</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+
+        {tab === 'notes' && (
+          <Card className="p-5">
+            {events.filter((e) => e.kind === 'call').length === 0
+              ? <EmptyState title="No notes yet" body="SOAP notes, coach session notes and call logs show here. Each one can be visible to her or kept internal." />
+              : (
+                <ul className="divide-y divide-line">
+                  {events.filter((e) => e.kind === 'call').map((e) => (
+                    <li key={e.id} className="flex flex-wrap items-start justify-between gap-2 py-3">
+                      <span><span className="block text-sm text-plum-900">{e.text}</span><span className="text-xs text-muted">Call log · {staffName(e.by)} · {fmtDateTime(e.at)}</span></span>
+                      <Chip>Internal</Chip>
+                    </li>
+                  ))}
+                </ul>
+              )}
+          </Card>
+        )}
+
+        {tab === 'orders' && (
+          <Card className="p-5"><EmptyState title="No orders yet" body="Orders are created from her plan when the NP releases it, and stay red until they're placed." /></Card>
+        )}
+
+        {tab === 'sage' && (
+          <Card className="p-5"><EmptyState title="No SAGE conversations yet" body="Once her report is released she can ask SAGE about it. Anything SAGE flags is highlighted here." /></Card>
+        )}
+
         {tab === 'results' && (
           <Card className="p-5">
             {draw?.labsReceivedAt && results.length ? (
@@ -199,8 +304,9 @@ export default function MemberRecord() {
                           {results.filter((r) => r.panel === panel).map((r) => (
                             <tr key={r.id} className="border-t border-line">
                               <td className="py-1.5 text-plum-900">{r.marker}</td>
-                              <td className="tabular-nums text-plum-900">{r.value}{r.unit ? ` ${r.unit}` : ''}</td>
+                              <td className="tabular-nums text-plum-900">{fmtValue(r)}</td>
                               <td className="text-right"><BandChip band={r.band} /></td>
+                              <td className="w-16 text-right"><button onClick={() => setSource(r)} className="inline-flex items-center gap-1 text-xs text-terracotta-700 underline-offset-2 hover:underline" aria-label={`Source for ${r.marker}`}><FileText size={12} /> Source</button></td>
                             </tr>
                           ))}
                         </tbody>
@@ -213,6 +319,7 @@ export default function MemberRecord() {
           </Card>
         )}
       </div>
+      <SourceDialog result={source} results={results} onClose={() => setSource(null)} />
     </div>
   );
 }

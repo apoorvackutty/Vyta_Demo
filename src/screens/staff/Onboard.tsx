@@ -1,11 +1,13 @@
 // G4 Onboard: after the discovery call, one step sends consents + intake and books the blood draw.
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, FileSignature, ClipboardList, Droplet } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, FileSignature, ClipboardList, Droplet, Check } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useDemo, ops } from '../../state/store';
 import { Button, Card, Field, inputCls } from '../../components/ui';
 import { BLOOD_DRAW_SLOTS, CLINIC_LOCATION, FORMS, ONBOARDING_FORM_IDS } from '../../data/seed';
+import NotFound from './NotFound';
+import { fmtDateTime } from '../../lib/time';
 import type { MenoStatus, Milestone } from '../../types';
 
 export default function Onboard() {
@@ -17,11 +19,29 @@ export default function Onboard() {
   const [goals, setGoals] = useState<string[]>(m?.goals ?? []);
   const [ms, setMs] = useState<Milestone[]>(m?.milestones ?? []);
   const [slot, setSlot] = useState(BLOOD_DRAW_SLOTS[0].at);
-  if (!m) return null;
+  if (!m) return <NotFound title="Member not found" body="She may have been removed, or the link is out of date." />;
+  // Once onboarded, this screen confirms what went out. Built from saved data, so it survives a reload.
   if (m.phase !== 'join') {
+    const first = m.name.split(' ')[0];
+    const sentForms = s.assignments.filter((a) => a.memberId === m.id);
+    const draw = s.visits.find((v) => v.memberId === m.id && v.type === 'blood_draw');
     return (
-      <div className="mx-auto max-w-3xl px-6 py-10">
-        <Card className="p-6"><p className="text-plum-900">{m.name} is already onboarded.</p><Button className="mt-4" onClick={() => nav(`/staff/guide/member/${m.id}`)}>Open her record</Button></Card>
+      <div className="mx-auto max-w-2xl px-6 py-10">
+        <Card className="p-8 text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-ok-bg text-ok-fg"><Check size={28} aria-hidden="true" /></span>
+          <h1 className="mt-4 font-display text-[32px] font-semibold text-plum-700">All sent to {first}</h1>
+          <p className="mt-1 text-sm text-muted">{sentForms[0] ? `Sent ${fmtDateTime(sentForms[0].sentAt)}. ` : ''}She has a notification on her phone.</p>
+          <ul className="mx-auto mt-5 max-w-sm space-y-2 text-left text-sm text-plum-900">
+            <li className="flex gap-2"><Check size={16} className="mt-0.5 text-ok-fg" />{sentForms.filter((a) => a.formId !== 'f-intake').length} consents and the intake form</li>
+            {draw && <li className="flex gap-2"><Check size={16} className="mt-0.5 text-ok-fg" />Blood draw booked for {fmtDateTime(draw.at)}</li>}
+            <li className="flex gap-2"><Check size={16} className="mt-0.5 text-ok-fg" />{m.milestones.filter((x) => x.selected).length} milestones and {m.goals.length} goals saved</li>
+          </ul>
+          <p className="mt-5 text-sm text-muted">If her intake stalls, it comes back to your Today list after 2 days.</p>
+          <div className="mt-6 flex justify-center gap-2">
+            <Button variant="secondary" onClick={() => nav('/staff/guide/today')}>Back to Today</Button>
+            <Button onClick={() => nav(`/staff/guide/member/${m.id}`)}>Open her record</Button>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -31,7 +51,7 @@ export default function Onboard() {
 
   const submit = () => {
     s.run((d) => ops.onboard(d, m.id, { menoStatus: meno, goals, milestones: ms, slotAt: slot, byId: 's-guide' }), `Sent to ${m.name.split(' ')[0]}'s phone · blood draw booked`);
-    nav(`/staff/guide/member/${m.id}`);
+    window.scrollTo({ top: 0 });
   };
 
   return (

@@ -41,8 +41,8 @@ export function useQueueActions(role: StaffRole) {
         open={!!snoozeFor} title="Snooze with a reason" onClose={() => setSnoozeFor(null)}
         footer={<>
           <Button variant="ghost" onClick={() => setSnoozeFor(null)}>Cancel</Button>
-          <Button onClick={() => {
-            const r = reason === 'Other' ? note || 'Other' : note ? `${reason}: ${note}` : reason;
+          <Button disabled={reason === 'Other' && !note.trim()} onClick={() => {
+            const r = reason === 'Other' ? note.trim() : note ? `${reason}: ${note}` : reason;
             run((d) => ops.snooze(d, snoozeFor!.memberId, snoozeFor!.taskKey, r, addDays(now, days), by), `Snoozed for ${days} days`);
             setSnoozeFor(null); setNote('');
           }}>Snooze</Button>
@@ -54,7 +54,9 @@ export function useQueueActions(role: StaffRole) {
             {SNOOZE_REASONS.map((r) => <option key={r}>{r}</option>)}
           </select>
         </Field>
-        <Field label="Note (optional)" htmlFor="sz-note"><input id="sz-note" className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. finishing antibiotics on Friday" /></Field>
+        <Field label={reason === 'Other' ? 'What is the reason?' : 'Note (optional)'} htmlFor="sz-note" hint={reason === 'Other' && !note.trim() ? 'Add a short reason so the next person knows why.' : undefined}>
+          <input id="sz-note" className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. finishing antibiotics on Friday" />
+        </Field>
         <Field label="Bring it back in" htmlFor="sz-days">
           <select id="sz-days" className={inputCls} value={days} onChange={(e) => setDays(Number(e.target.value))}>
             {[1, 3, 7, 14].map((n) => <option key={n} value={n}>{n} day{n > 1 ? 's' : ''}</option>)}
