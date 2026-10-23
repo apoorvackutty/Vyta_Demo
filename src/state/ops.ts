@@ -1,7 +1,7 @@
 // Pure data operations. Each op mutates a cloned DemoData draft. Every op writes a TimelineEvent.
 import type {
   Member, FormAssignment, Visit, SafetyFlag, FollowUp, TimelineEvent, MemberNotice, IntakeValue, MenoStatus, Milestone,
-  Result, Report, Approval, Finding, PlanField, Station,
+  Result, Report, Approval, Finding, PlanField, Station, PlanItem, Order, SageMessage, FlagAction,
 } from '../types';
 import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION, TESTELLE_INTAKE } from '../data/seed';
 import { INTAKE } from '../data/intake';
@@ -11,7 +11,8 @@ import { fmtDateTime, fmtDate, toMs } from '../lib/time';
 import { baselineLabs, draftFindings, draftPlan, PRE_REVIEW_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
 import { STAFF } from '../data/seed';
 import { BASELINE_SUMMARY, wordingSlots, wordingChanged } from '../data/wording';
-import { canApprovePreReview, canPassCompleteness, unfilled, canFinishFinalReview, vytaDayFindings } from './guards';
+import { canApprovePreReview, canPassCompleteness, unfilled, canFinishFinalReview, vytaDayFindings, canRelease, needsChoice } from './guards';
+import { SAGE_SCRIPT, matchSage } from '../data/sage';
 import { vytaDayScores } from '../lib/scores';
 import { STATIONS, stationOf, uploadResults, bandFor, resultId, FUNCTIONAL, functionalBand, type FunctionalId } from '../data/stations';
 
@@ -29,6 +30,8 @@ export interface DemoData {
   results: Result[];
   reports: Report[];
   approvals: Approval[];
+  orders: Order[];
+  sage: SageMessage[];
   seq: number;
 }
 
@@ -141,9 +144,12 @@ export function snooze(d: DemoData, memberId: string, taskKey: string, reason: s
   log(d, memberId, byId, 'snooze', `Follow-up set for ${fmtDate(dueAt)}: ${reason}`);
 }
 
-export function logCall(d: DemoData, memberId: string, byId: string, outcome: string) {
+export function logCall(d: DemoData, memberId: string, byId: string, outcome: string, taskKey?: string) {
   member(d, memberId).lastContactAt = d.now;
-  log(d, memberId, byId, 'call', `Call logged: ${outcome}`);
+  // G1 next-day call after release: logging it takes it off the Guide's list.
+  const next = taskKey?.startsWith('nextday-') ? d.reports.find((r) => `nextday-${r.id}` === taskKey) : undefined;
+  if (next) next.nextDayCallAt = d.now;
+  log(d, memberId, byId, 'call', `${next ? 'Next-day call' : 'Call'} logged: ${outcome}`);
 }
 
 export function confirmVisit(d: DemoData, visitId: string, byId: string) {
@@ -595,6 +601,109 @@ export function finishFinalReview(d: DemoData, reportId: string, byId: string): 
   log(d, r.memberId, byId, 'approval', `NP final review done · ${staffName(byId)} · VMRI ${pre.vmri} → ${scores.vmri}, biological age ${pre.biologicalAge} → ${scores.biologicalAge}. Ready for the results conversation`);
   return true;
 }
+
+// ---------- N4 Results conversation: her choices, and consents pushed to her phone ----------
+const presenting = (r: Report) => r.status === 'final_review' && !!r.finalReviewedAt;
+const CHOICE_LABEL = { accept: 'Accepted', decline: 'Declined', defer: 'Deferred' } as const;
+
+export function recordChoice(d: DemoData, reportId: string, itemId: string, choice: NonNullable<PlanItem['memberChoice']>, reason: string, byId: string) {
+  const r = report(d, reportId);
+  const item = r.plan.find((i) => i.id === itemId);
+  if (!item || item.removed || !presenting(r) || (choice !== 'accept' && !reason.trim())) return;
+  item.memberChoice = choice;
+  item.choiceReason = choice === 'accept' ? undefined : reason.trim();
+  log(d, r.memberId, byId, 'member_choice', `Results conversation · ${item.name}: ${CHOICE_LABEL[choice].toLowerCase()} by her${item.choiceReason ? ` ("${item.choiceReason}")` : ''}`);
+}
+
+// "Accept the rest": every medication, supplement and peptide she hasn't chosen on yet.
+export function acceptRemaining(d: DemoData, reportId: string, byId: string) {
+  const r = report(d, reportId);
+  if (!presenting(r)) return;
+  const open = r.plan.filter((i) => needsChoice(i) && !i.memberChoice);
+  if (!open.length) return;
+  open.forEach((i) => { i.memberChoice = 'accept'; });
+  log(d, r.memberId, byId, 'member_choice', `Results conversation · accepted: ${open.map((i) => i.name).join(', ')}`);
+}
+
+export function pushConsent(d: DemoData, reportId: string, itemId: string, byId: string) {
+  const r = report(d, reportId);
+  const item = r.plan.find((i) => i.id === itemId);
+  if (!item?.needsConsentFormId || item.memberChoice !== 'accept' || item.consentAssignmentId || !presenting(r)) return;
+  sendForm(d, r.memberId, item.needsConsentFormId, byId);
+  item.consentAssignmentId = d.assignments[d.assignments.length - 1].id;
+  log(d, r.memberId, byId, 'consent_pushed', `${formTitle(item.needsConsentFormId)} pushed to her phone during the results conversation`);
+}
+
+// ---------- N5 Approve and release ----------
+export function releaseReport(d: DemoData, reportId: string, byId: string): boolean {
+  const r = report(d, reportId);
+  if (!canRelease(d, r).ok) return false;
+  r.version += 1;
+  r.status = 'released';
+  r.releasedAt = d.now;
+  r.releasedById = byId;
+  d.approvals.push({ id: id(d, 'ap'), gate: 'release', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'approved', byId, at: d.now });
+  // One order line per accepted item that's supplied from outside (PRD V9). Declined and deferred items aren't ordered.
+  const toOrder = r.plan.filter((i) => !i.removed && i.supplier && i.memberChoice === 'accept');
+  for (const i of toOrder) d.orders.push({ id: id(d, 'ord'), memberId: r.memberId, reportId: r.id, planItemId: i.id, item: i.name, supplier: i.supplier!, status: 'open', createdAt: d.now });
+  const m = member(d, r.memberId);
+  m.phase = 'first_30';
+  m.step = 'Report and plan released · first 30 days';
+  log(d, r.memberId, byId, 'release', `Report and plan v${r.version} released to her app by ${staffName(byId)}. ${toOrder.length} orders created`);
+  notify(d, r.memberId, `Your report and plan are ready. Approved by ${staffName(byId)}, ${STAFF.find((x) => x.id === byId)?.title === 'Nurse Practitioner' ? 'NP' : STAFF.find((x) => x.id === byId)?.title}.`);
+  return true;
+}
+
+// "Not ready": back to final review with a reason. Her choices so far are kept.
+export function notReady(d: DemoData, reportId: string, reason: string, byId: string) {
+  const r = report(d, reportId);
+  if (!presenting(r) || !reason.trim()) return;
+  d.approvals.push({ id: id(d, 'ap'), gate: 'release', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'sent_back', reason: reason.trim(), byId, at: d.now });
+  delete r.finalReviewedAt;
+  delete r.finalReviewedById;
+  member(d, r.memberId).step = 'Your Vyta Day · waiting on NP final review';
+  log(d, r.memberId, byId, 'sent_back', `Release held by ${staffName(byId)}: "${reason.trim()}". Back to final review`);
+}
+
+// ---------- N6 Orders ----------
+const SUPPLIER_LABEL = { compounding: 'compounding pharmacy', retail: 'retail pharmacy', fullscript: 'Fullscript', peptide_supplier: 'peptide supplier' } as const;
+export function placeOrder(d: DemoData, orderId: string, byId: string) {
+  const o = d.orders.find((x) => x.id === orderId);
+  if (!o || o.status === 'placed') return;
+  o.status = 'placed';
+  o.placedAt = d.now;
+  o.placedById = byId;
+  log(d, o.memberId, byId, 'order_placed', `Order placed: ${o.item} with the ${SUPPLIER_LABEL[o.supplier]}`);
+}
+
+// ---------- M10 SAGE (scripted) and safety flags (G6, N7) ----------
+export function askSage(d: DemoData, memberId: string, text: string) {
+  const q = text.trim();
+  if (!q) return;
+  const turn = matchSage(q);
+  d.sage.push({ id: id(d, 'sg'), memberId, from: 'member', text: q, at: d.now, flagged: !!turn.flag });
+  d.sage.push({ id: id(d, 'sg'), memberId, from: 'sage', text: turn.reply, at: d.now, citation: turn.citation });
+  if (turn.flag) {
+    d.flags.push({ id: id(d, 'flag'), memberId, source: 'sage', quote: q, severity: turn.flag, status: 'open', raisedAt: d.now, actions: [] });
+    log(d, memberId, 'sage', 'flag_raised', `${turn.flag === 'urgent' ? 'Urgent safety' : 'Review'} flag raised by SAGE: "${q}"`);
+  }
+}
+
+const FLAG_WORDS: Record<FlagAction['kind'], string> = {
+  call: 'Called her', message: 'Messaged her', escalate: 'Escalated to the NP', reply: 'Replied to the Guide', order_labs: 'Ordered labs',
+  adjust_plan: 'Plan adjustment noted', note: 'Note', close: 'Closed',
+};
+export function flagAction(d: DemoData, flagId: string, kind: FlagAction['kind'], note: string, byId: string) {
+  const f = d.flags.find((x) => x.id === flagId);
+  if (!f || f.status === 'closed' || ((kind === 'escalate' || kind === 'close') && !note.trim())) return;
+  f.actions = [...(f.actions ?? []), { at: d.now, byId, kind, note: note.trim() }];
+  if (kind === 'escalate') f.status = 'escalated';
+  if (kind === 'close') { f.status = 'closed'; f.outcome = note.trim(); f.closedAt = d.now; f.closedById = byId; }
+  if (kind === 'close') d.approvals.push({ id: id(d, 'ap'), gate: 'safety_close', memberId: f.memberId, outcome: 'approved', reason: note.trim(), byId, at: d.now });
+  log(d, f.memberId, byId, kind === 'close' ? 'flag_closed' : 'flag_action', `Safety flag · ${FLAG_WORDS[kind]} (${staffName(byId)})${note.trim() ? `: "${note.trim()}"` : ''}`);
+  if (kind === 'message') notify(d, f.memberId, `${staffName(byId).split(' ')[0]} from your care team: ${note.trim() || 'We got your message and will call you shortly.'}`);
+}
+export { SAGE_SCRIPT };
 
 export function refreshStep(d: DemoData, memberId: string) {
   const m = member(d, memberId);

@@ -34,7 +34,7 @@ interface DemoStore extends DemoData {
   markNoticesRead: (memberId: string) => void;
 }
 
-const DATA_KEYS: (keyof DemoData)[] = ['now', 'members', 'assignments', 'visits', 'flags', 'followUps', 'timeline', 'notices', 'intake', 'intakeDone', 'results', 'reports', 'approvals', 'seq'];
+const DATA_KEYS: (keyof DemoData)[] = ['now', 'members', 'assignments', 'visits', 'flags', 'followUps', 'timeline', 'notices', 'intake', 'intakeDone', 'results', 'reports', 'approvals', 'orders', 'sage', 'seq'];
 const pickData = (s: DemoData): DemoData => {
   const out = {} as Record<string, unknown>;
   for (const k of DATA_KEYS) out[k] = s[k];

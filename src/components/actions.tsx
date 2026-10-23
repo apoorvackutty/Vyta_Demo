@@ -9,7 +9,7 @@ import { can, queueActionKind } from '../state/permissions';
 import { Button, Dialog, Field, inputCls } from './ui';
 
 const SNOOZE_REASONS = ['On antibiotics, retry later', 'Travelling', 'Asked to be contacted next week', 'Waiting on another provider', 'Other'];
-const CALL_OUTCOMES = ['Spoke with her: will finish tonight', 'Left a voicemail', 'No answer', 'Asked for help: booked a call'];
+const CALL_OUTCOMES = ['Spoke with her: will finish tonight', 'Spoke with her: settling in well, questions answered', 'Left a voicemail', 'No answer', 'Asked for help: booked a call'];
 
 export function useQueueActions(role: StaffRole) {
   const nav = useNavigate();
@@ -40,7 +40,7 @@ export function useQueueActions(role: StaffRole) {
       case 'present': nav(`/staff/${role}/present/${a.memberId}`); break;
       case 'release': nav(`/staff/${role}/release/${a.memberId}`); break;
       case 'open_flag': nav(`/staff/${role}/flag/${a.flagId}`); break;
-      case 'place_order': break; // N6 (task 24)
+      case 'place_order': run((d) => ops.placeOrder(d, a.orderId, by), 'Order marked placed'); break;
       case 'start_visit': {
         const st = useDemo.getState();
         const v = st.visits.find((x) => x.id === a.visitId);
@@ -84,7 +84,7 @@ export function useQueueActions(role: StaffRole) {
         open={!!callFor} title="Log a call" onClose={() => setCallFor(null)}
         footer={<>
           <Button variant="ghost" onClick={() => setCallFor(null)}>Cancel</Button>
-          <Button onClick={() => { run((d) => ops.logCall(d, callFor!.memberId, by, note ? `${outcome}. ${note}` : outcome), 'Call logged', undefined, { memberId: callFor!.memberId, by }); setCallFor(null); setNote(''); }}>Save</Button>
+          <Button onClick={() => { run((d) => ops.logCall(d, callFor!.memberId, by, note ? `${outcome}. ${note}` : outcome, callFor!.taskKey), 'Call logged', undefined, { memberId: callFor!.memberId, by }); setCallFor(null); setNote(''); }}>Save</Button>
         </>}
       >
         <Field label="Outcome" htmlFor="call-outcome">

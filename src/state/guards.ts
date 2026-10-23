@@ -1,5 +1,5 @@
 // Gate guards (docs/SCHEMA.md §4). The UI disables the gate button and lists `missing` in plain words.
-import type { Finding, PlanItem, PlanField, Report, Result, Station, Visit } from '../types';
+import type { Finding, PlanItem, PlanField, Report, Result, Station, Visit, FormAssignment, Approval } from '../types';
 import { STATIONS, UPLOADS, FUNCTIONAL, stationOf } from '../data/stations';
 import { FIELD_LABEL, BAND_RANK } from '../data/protocol';
 
@@ -91,4 +91,33 @@ export function canFinishFinalReview(report: Report, visit: Visit | undefined, v
   if (report.status !== 'final_review') missing.push('The report is not waiting on final review');
   else if (report.finalReviewedAt) missing.push('Final review is already done');
   return { ok: missing.length === 0, missing };
+}
+
+// ---------- N4 / N5 ----------
+// Items she says yes or no to in the results conversation: medications, supplements, peptides. Habits are just part of the plan.
+export const needsChoice = (i: PlanItem) => !i.removed && (i.group === 'prescription' || i.group === 'supplement' || i.group === 'peptide');
+
+export interface ReleaseData { visits: Visit[]; results: Result[]; assignments: FormAssignment[]; approvals: Approval[] }
+export interface ReleaseCheck { ok: boolean; missing: string[]; items: { label: string; ok: boolean; detail: string }[] }
+
+// Release (SCHEMA §4): completeness passed, every finding decided, every consent for an accepted item signed, Coach wording approved.
+export function canRelease(d: ReleaseData, report: Report): ReleaseCheck {
+  const visit = d.visits.find((v) => v.memberId === report.memberId && v.type === 'vyta_day');
+  const dayResults = visit ? d.results.filter((r) => r.visitId === visit.id) : [];
+  const undecided = report.findings.filter((f) => !f.decision).length + vytaDayFindings(report, dayResults).filter((x) => !x.finding?.decision).length;
+  const consentItems = report.plan.filter((i) => !i.removed && i.memberChoice === 'accept' && i.needsConsentFormId);
+  const unsigned = consentItems.filter((i) => d.assignments.find((a) => a.id === i.consentAssignmentId)?.status !== 'signed');
+  const unchosen = report.plan.filter((i) => needsChoice(i) && !i.memberChoice);
+  const wording = d.approvals.some((a) => a.reportId === report.id && a.gate === 'coach_wording' && a.outcome === 'approved');
+  const items = [
+    { label: 'Completeness', ok: visit?.completeness === 'passed', detail: visit?.completeness === 'passed' ? 'Every test in or skipped with a reason' : 'Waiting on the completeness check' },
+    { label: 'NP final review', ok: !!report.finalReviewedAt, detail: report.finalReviewedAt ? 'Changes since pre-review checked, new findings decided' : 'Not done yet' },
+    { label: 'All findings decided', ok: undecided === 0, detail: undecided ? `${undecided} still to decide` : `${report.findings.length} decided` },
+    { label: 'Her choices recorded', ok: unchosen.length === 0, detail: unchosen.length ? `Still to ask: ${unchosen.map((i) => i.name).join(', ')}` : 'Every medication, supplement and peptide' },
+    { label: 'Consents signed', ok: unsigned.length === 0, detail: unsigned.length ? unsigned.map((i) => `${i.name}: ${i.consentAssignmentId ? 'waiting on her signature' : 'consent not sent yet'}`).join('; ') : consentItems.length ? `${consentItems.length} signed on her phone` : 'None needed' },
+    { label: 'Coach wording', ok: wording, detail: wording ? 'Approved' : 'Not approved' },
+  ];
+  const missing = items.filter((x) => !x.ok).map((x) => `${x.label}: ${x.detail}`);
+  if (report.status !== 'final_review') missing.push(report.status === 'released' ? 'Already released' : 'The report is not in final review');
+  return { ok: missing.length === 0, missing, items };
 }

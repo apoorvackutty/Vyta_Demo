@@ -2,7 +2,7 @@
 import type { QueueItem, StaffRole, QueueCategory } from '../types';
 import type { DemoData } from './ops';
 import { STATIC_TASKS } from '../data/seed';
-import { canApprovePreReview, canPassCompleteness } from './guards';
+import { canApprovePreReview, canPassCompleteness, canRelease } from './guards';
 import { visitStarted } from './ops';
 import { can, isSuperAdmin } from './permissions';
 import { STATIONS } from '../data/stations';
@@ -15,11 +15,15 @@ function snoozed(d: DemoData, taskKey: string) {
 export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
   const items: QueueItem[] = [];
 
+  // Pinned until a person closes them (PRD S1). Escalated flags belong to the NP (N7).
   for (const f of d.flags.filter((x) => x.status !== 'closed')) {
+    const escalated = f.status === 'escalated';
+    const note = escalated ? f.actions?.filter((a) => a.kind === 'escalate').slice(-1)[0]?.note : undefined;
     items.push({
-      key: `flag-${f.id}`, memberId: f.memberId, category: 'safety', roles: f.severity === 'urgent' ? ['guide', 'np'] : ['guide'],
-      label: 'Safety concern', reason: f.quote, ageLabel: ageLabel(f.raisedAt, d.now), priority: 0,
-      primary: { label: 'Open', action: { type: 'open_record', memberId: f.memberId } },
+      key: `flag-${f.id}`, memberId: f.memberId, category: 'safety', roles: escalated ? ['np'] : f.severity === 'urgent' ? ['guide', 'np'] : ['guide'],
+      label: escalated ? 'Escalated by Guide' : `Safety${f.severity === 'urgent' ? ' · urgent' : ''}${f.source === 'sage' ? ' · from SAGE' : ''}`,
+      reason: escalated && note ? `“${note}” · ${f.quote}` : `“${f.quote}”`, ageLabel: ageLabel(f.raisedAt, d.now), priority: 0,
+      primary: { label: 'Open', action: { type: 'open_flag', flagId: f.id } },
     });
   }
 
@@ -144,6 +148,28 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
           primary: { label: 'Final review', action: { type: 'final_review', memberId: m.id } },
         });
       }
+      // N4 → N5: once the final review is done the NP talks results with her, then releases.
+      if (r.status === 'final_review' && r.finalReviewedAt) {
+        const rel = canRelease(d, r);
+        items.push({
+          key: `release-${r.id}`, memberId: m.id, category: 'reviews', roles: ['np'],
+          label: rel.ok ? 'Ready to release' : 'Results conversation',
+          reason: rel.ok ? `Every check passed · release v${r.version + 1} to her app` : rel.missing[0],
+          ageLabel: ageLabel(r.finalReviewedAt, d.now), priority: 1,
+          primary: rel.ok ? { label: 'Release', action: { type: 'release', memberId: m.id } } : { label: 'Present', action: { type: 'present', memberId: m.id } },
+        });
+      }
+      // G1 next-day call: on the Guide's list from release until it's logged.
+      if (r.status === 'released' && r.releasedAt && !r.nextDayCallAt) {
+        const key = `nextday-${r.id}`;
+        const due = r.releasedAt.slice(0, 10) === d.now.slice(0, 10) ? 'Due tomorrow' : 'Due today';
+        items.push({
+          key, memberId: m.id, category: 'overdue', roles: ['guide'],
+          label: `Next-day call: ${m.name.split(' ')[0]}`, reason: `Report released ${fmtDate(r.releasedAt)} · how is she settling in, any questions on the plan?`,
+          ageLabel: due, priority: 2,
+          primary: { label: 'Log call', action: { type: 'log_call', memberId: m.id, taskKey: key } },
+        });
+      }
       if (r.status === 'pre_reviewed') {
         const ap = d.approvals.filter((a) => a.reportId === r.id && a.outcome === 'approved').slice(-1)[0];
         items.push({
@@ -154,6 +180,17 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
         });
       }
     }
+  }
+
+  // N6: red until placed, on the NP's and MA's lists until done.
+  const SUPPLIER = { compounding: 'Compounding pharmacy', retail: 'Retail pharmacy', fullscript: 'Fullscript', peptide_supplier: 'Peptide supplier' } as const;
+  for (const o of d.orders.filter((x) => x.status === 'open')) {
+    items.push({
+      key: `order-${o.id}`, memberId: o.memberId, category: 'orders', roles: ['np', 'ma'],
+      label: `Order: ${o.item} (${SUPPLIER[o.supplier]})`, reason: 'Not placed yet', ageLabel: ageLabel(o.createdAt, d.now), priority: 1,
+      primary: can(role, 'place_order') ? { label: 'Mark placed', action: { type: 'place_order', orderId: o.id } } : undefined,
+      secondary: [{ label: 'Open', action: { type: 'open_record', memberId: o.memberId } }],
+    });
   }
 
   for (const t of STATIC_TASKS) {
@@ -178,8 +215,8 @@ export const CATEGORY_LABEL: Record<QueueCategory, string> = {
 
 export const ROLE_TILES: Record<StaffRole, QueueCategory[]> = {
   guide: ['safety', 'onboard', 'overdue', 'forms', 'messages'],
-  ma: ['visits', 'labs', 'overdue'],
+  ma: ['visits', 'labs', 'orders', 'overdue'],
   np: ['safety', 'reviews', 'orders'],
   coach: ['reviews', 'engagement'],
-  admin: ['safety', 'onboard', 'overdue', 'forms', 'visits', 'labs', 'reviews', 'messages'],
+  admin: ['safety', 'onboard', 'overdue', 'forms', 'visits', 'labs', 'reviews', 'orders', 'messages'],
 };

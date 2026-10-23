@@ -86,7 +86,7 @@ export function QueueRow({ item, memberName, ownerName, onAction, onOpen, acting
   item: QueueItem; memberName: string; ownerName: string; actingNote?: string | null;
   onAction: (a: NonNullable<QueueItem['primary']>['action']) => void; onOpen: () => void;
 }) {
-  const bar = item.priority === 0 ? 'bg-danger-fg' : item.priority === 1 ? 'bg-terracotta-500' : item.priority === 2 ? 'bg-watch-fg/60' : 'bg-line';
+  const bar = item.priority === 0 || item.category === 'orders' ? 'bg-danger-fg' : item.priority === 1 ? 'bg-terracotta-500' : item.priority === 2 ? 'bg-watch-fg/60' : 'bg-line';
   return (
     <li className={clsx('group relative flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-paper px-4 py-3 last:border-b-0 hover:bg-cream-100 sm:flex-nowrap', item.priority === 0 && 'bg-danger-bg/50')}>
       <span className={clsx('absolute left-0 top-0 h-full w-1', bar)} aria-hidden="true" />
@@ -95,7 +95,7 @@ export function QueueRow({ item, memberName, ownerName, onAction, onOpen, acting
         <span className="min-w-0">
           <span className="flex items-center gap-2">
             <span className="truncate text-sm font-semibold text-plum-900">{memberName}</span>
-            <Chip tone={item.category === 'safety' ? 'danger' : 'neutral'}>{CATEGORY_LABEL[item.category]}</Chip>
+            <Chip tone={item.category === 'safety' || item.category === 'orders' ? 'danger' : 'neutral'}>{CATEGORY_LABEL[item.category]}</Chip>
           </span>
           <span className="block truncate text-sm text-plum-900">{item.label}</span>
           <span className="block truncate text-xs text-muted">{item.reason}</span>
