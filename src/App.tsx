@@ -77,8 +77,10 @@ function DraftBuilder() {
 // Full-screen member app for a real phone (TRD §5: 360–430 px, no demo chrome).
 function MemberFullScreen() {
   return (
-    <div id="main-content" tabIndex={-1} className="mx-auto h-[100dvh] max-w-[430px] bg-cream-200 focus:outline-none sm:border-x sm:border-line">
-      <ErrorBoundary><MemberApp /></ErrorBoundary>
+    <div id="main-content" tabIndex={-1} className="mx-auto flex h-[100dvh] max-w-[430px] flex-col bg-cream-200 focus:outline-none sm:border-x sm:border-line">
+      {/* TRD §5 data hygiene: every screen says it's a demo */}
+      <p className="bg-plum-900 py-1 text-center text-xs text-cream-100">Demo · fictional data</p>
+      <div className="min-h-0 flex-1"><ErrorBoundary><MemberApp /></ErrorBoundary></div>
     </div>
   );
 }
