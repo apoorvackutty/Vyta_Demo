@@ -2,6 +2,7 @@ import type { DemoData } from './ops';
 import { onboard, signForm, saveIntake, markDrawn, confirmVisit, labsReceived, finishDraft, skipIntakeToEnd, log } from './ops';
 import { TESTELLE_BASE, ROSTER, TESTELLE_INTAKE, BLOOD_DRAW_SLOTS } from '../data/seed';
 import { INTAKE } from '../data/intake';
+import { fillRequired } from '../lib/intakeFlow';
 
 export type ScenarioId = 'day0' | 'intake_stalled' | 'labs_back' | 'vyta_day' | 'released' | 'safety' | 'quarterly';
 
@@ -44,7 +45,7 @@ function intakeStalled(): DemoData {
   d.now = '2026-10-13T20:10';
   for (const s of INTAKE.slice(0, 2)) {
     const ans = Object.fromEntries(s.questions.map((q) => [q.id, TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined));
-    saveIntake(d, t.id, s.id, ans, true);
+    saveIntake(d, t.id, s.id, { ...ans, ...fillRequired(s.questions, ans, 2026) }, true);
   }
   const s3 = INTAKE[2];
   const half = Object.fromEntries(s3.questions.slice(0, 5).map((q) => [q.id, TESTELLE_INTAKE[q.id]]));

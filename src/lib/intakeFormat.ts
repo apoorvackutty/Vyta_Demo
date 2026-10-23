@@ -11,4 +11,8 @@ export const detailsKey = (qid: string) => `${qid}_more`;
 // Optional note on how she got on with a medication, hormone or supplement, stored as e.g. "Q21_reaction".
 export const reactionKey = (qid: string) => `${qid}_reaction`;
 // Every optional extra stored beside a question's answer.
-export const extraKeys = (qid: string) => [detailsKey(qid), reactionKey(qid)];
+// Required structured extras: a year per ticked surgery, a dose (and optional how often) per listed medication.
+export const yearsKey = (qid: string) => `${qid}_years`;
+export const doseKey = (qid: string) => `${qid}_dose`;
+export const oftenKey = (qid: string) => `${qid}_often`;
+export const extraKeys = (qid: string) => [detailsKey(qid), reactionKey(qid), yearsKey(qid), doseKey(qid), oftenKey(qid)];

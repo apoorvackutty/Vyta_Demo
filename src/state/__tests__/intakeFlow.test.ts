@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import type { IntakeValue } from '../../types';
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
-import { DETAILS, FOLLOW_UPS, GRID_SHORT, ORDERED_SINGLE, isShown, toggleMulti, wantsDetails, REACTIONS, reactionHint, wantsReaction } from '../../lib/intakeFlow';
+import { skipIntakeToEnd } from '../ops';
+import { DETAILS, FOLLOW_UPS, GRID_SHORT, ORDERED_SINGLE, isShown, toggleMulti, wantsDetails, REACTIONS, reactionHint, wantsReaction, requiredMissing, fillRequired, listItems } from '../../lib/intakeFlow';
 import { GRID_OPTIONS, detailsKey, reactionKey } from '../../lib/intakeFormat';
 import { buildScenario } from '../scenarios';
 import * as ops from '../ops';
@@ -88,7 +90,7 @@ describe('how did it go (medications, hormones, supplements)', () => {
     for (const parent of ['Q20', 'Q22', 'Q24', 'Q27']) expect(REACTIONS.has(parent)).toBe(false);
     // ...and doesn't ask for the dose again there.
     expect(reactionHint('Q21')).not.toMatch(/dose/i);
-    expect(reactionHint('Q26')).toMatch(/dose/i);
+    expect(reactionHint('Q26')).not.toMatch(/dose/i);
   });
 
   it('shows once she says yes or lists something, not for none/no', () => {
@@ -109,5 +111,47 @@ describe('how did it go (medications, hormones, supplements)', () => {
     ops.skipIntakeToEnd(d, 'm-testelle', { Q20: 'Yes', Q21: 'Pill, 10 years', Q21_reaction: 'Mood dips, stopped 2023' });
     expect(d.intake['m-testelle'].Q26_reaction).toBe('Magnesium helps my sleep');
     expect(d.intake['m-testelle'].Q21_reaction).toBe('Mood dips, stopped 2023');
+  });
+});
+
+describe('required years and doses', () => {
+  const s1 = INTAKE[0].questions, s2 = INTAKE[1].questions;
+  const fields = (m: { field: string }[]) => m.map((x) => x.field);
+
+  it('asks a year for each ticked surgery, validated 1940 to the demo year', () => {
+    expect(requiredMissing(s1, { Q09: ['None'] }, 2026)).toEqual([]);
+    const m = requiredMissing(s1, { Q09: ['Hysterectomy', 'Oophorectomy'], Q09_years: { Oophorectomy: '1939' } }, 2026);
+    expect(m.map((x) => x.message)).toEqual(['Add the year of your hysterectomy', 'Enter a year between 1940 and 2026']);
+    expect(requiredMissing(s1, { Q09: ['Hysterectomy'], Q09_years: { Hysterectomy: '2027' } }, 2026)[0].message).toBe('Enter a year between 1940 and 2026');
+    expect(requiredMissing(s1, { Q09: ['Hysterectomy'], Q09_years: { Hysterectomy: '2019' } }, 2026)).toEqual([]);
+  });
+
+  it('asks a dose for each listed HRT or supplement item', () => {
+    expect(listItems('Vitamin D3; magnesium, B12\nfish oil')).toEqual(['Vitamin D3', 'magnesium', 'B12', 'fish oil']);
+    expect(listItems('No')).toEqual([]);
+    expect(fields(requiredMissing(s2, { Q19: 'No', Q26: 'Vitamin D3; B12', Q26_dose: { 'Vitamin D3': '2,000 IU' } }, 2026))).toEqual(['Q26_dose:B12']);
+  });
+
+  it('makes the source "name, dose, duration" follow-up required only after Yes or a listed item', () => {
+    expect(fields(requiredMissing(s2, { Q20: 'No', Q22: 'None', Q24: 'None', Q27: 'No' }, 2026))).toEqual([]);
+    expect(fields(requiredMissing(s2, { Q20: 'Yes', Q22: 'Metformin', Q24: 'None', Q27: 'Yes' }, 2026))).toEqual(['Q21', 'Q23', 'Q28']);
+    expect(fields(requiredMissing(s2, { Q20: 'Yes', Q21: '  ' }, 2026))).toEqual(['Q21']);
+  });
+
+  it('demo fill leaves nothing required missing, using Testelle\'s fictional doses', () => {
+    const ans = { ...Object.fromEntries(s2.map((q) => [q.id, TESTELLE_INTAKE[q.id]])), Q20: 'Yes', Q19: 'Estradiol patch' } as Record<string, IntakeValue>;
+    const filled = { ...ans, ...fillRequired(s2, ans, 2026) };
+    expect(requiredMissing(s2, filled, 2026)).toEqual([]);
+    expect((filled.Q26_dose as Record<string, string>)['Vitamin D3']).toBe('2,000 IU');
+    const s1ans = { Q09: ['Endometrial ablation'] };
+    expect(requiredMissing(s1, { ...s1ans, ...fillRequired(s1, s1ans, 2026) }, 2026)).toEqual([]);
+  });
+
+  it('skip to the end fills every required field, and the stalled scenario has her doses', () => {
+    const d = buildScenario('intake_stalled');
+    expect((d.intake['m-testelle'].Q26_dose as Record<string, string>).B12).toBe('1,000 mcg');
+    skipIntakeToEnd(d, 'm-testelle', { Q09: ['Hysterectomy'], Q27: 'Yes', Q28: '' });
+    const ans = d.intake['m-testelle'];
+    for (const sec of INTAKE) expect(requiredMissing(sec.questions, ans, 2026)).toEqual([]);
   });
 });

@@ -10,7 +10,8 @@ import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
 import { ageYears, fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { nextSlots, type SlotKind } from '../../lib/slots';
-import { detailsKey, extraKeys, fmtAnswer, reactionKey } from '../../lib/intakeFormat';
+import { detailsKey, doseKey, fmtAnswer, oftenKey, reactionKey, yearsKey } from '../../lib/intakeFormat';
+import { DOSE_LISTS, SURGERY_YEARS, listItems } from '../../lib/intakeFlow';
 import { SourceDialog, fmtValue } from '../../components/results';
 import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
 import type { IntakeValue, Result, StaffRole } from '../../types';
@@ -393,8 +394,27 @@ function AnswerNote({ v, label }: { v: IntakeValue | undefined; label: string })
   if (typeof v !== 'string' || !v.trim()) return null;
   return <dd className="mt-1 border-l-2 border-line pl-2 text-plum-900"><span className="text-xs text-muted">{label}: </span>{v}</dd>;
 }
+const rec = (v: IntakeValue | undefined) => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, string> : {});
+// Surgeries read with their year beside each: "Hysterectomy (2019), Oophorectomy (2019)".
+function answerText(qid: string, ans: Record<string, IntakeValue>) {
+  const v = ans[qid];
+  if (SURGERY_YEARS.has(qid) && Array.isArray(v)) { const y = rec(ans[yearsKey(qid)]); return v.map((x) => (y[x] ? `${x} (${y[x]})` : x)).join(', ') || '—'; }
+  return fmtAnswer(v);
+}
 function AnswerExtras({ ans, qid }: { ans: Record<string, IntakeValue>; qid: string }) {
-  return <><AnswerNote v={ans[detailsKey(qid)]} label="Member's details" /><AnswerNote v={ans[reactionKey(qid)]} label="How she reacted" /></>;
+  const doses = rec(ans[doseKey(qid)]), often = rec(ans[oftenKey(qid)]);
+  const items = DOSE_LISTS.has(qid) ? listItems(ans[qid]) : [];
+  return (
+    <>
+      {items.length > 0 && (
+        <dd className="mt-1"><ul className="space-y-0.5">{items.map((it) => (
+          <li key={it} className="text-plum-900">{it}: {doses[it] || <span className="text-muted">dose not given</span>}{often[it] ? ` · ${often[it]}` : ''}</li>
+        ))}</ul></dd>
+      )}
+      <AnswerNote v={ans[detailsKey(qid)]} label="Member's details" />
+      <AnswerNote v={ans[reactionKey(qid)]} label="How she reacted" />
+    </>
+  );
 }
 
 function IntakeTab({ memberId }: { memberId: string }) {
@@ -414,7 +434,7 @@ function IntakeTab({ memberId }: { memberId: string }) {
           <div className="mt-4 rounded-lg bg-cream-100 p-4">
             <h3 className="mb-2 text-sm font-semibold text-plum-900">Worth knowing first</h3>
             <dl className="grid gap-x-6 gap-y-2 text-sm md:grid-cols-2">
-              {pinned.map((q) => <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className={q.safety && ans[q.id] === 'Yes' ? 'font-semibold text-danger-fg' : 'text-plum-900'}>{fmtAnswer(ans[q.id])}</dd><AnswerExtras ans={ans} qid={q.id} /></div>)}
+              {pinned.map((q) => <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className={q.safety && ans[q.id] === 'Yes' ? 'font-semibold text-danger-fg' : 'text-plum-900'}>{answerText(q.id, ans)}</dd><AnswerExtras ans={ans} qid={q.id} /></div>)}
             </dl>
           </div>
         )}
@@ -426,8 +446,8 @@ function IntakeTab({ memberId }: { memberId: string }) {
             <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-plum-900">{sec.title}</h3>{done.includes(sec.id) ? <Chip tone="ok">Finished</Chip> : any ? <Chip tone="info">Started</Chip> : <Chip>Not started</Chip>}</div>
             {any && (
               <dl className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
-                {sec.questions.filter((q) => fmtAnswer(ans[q.id]) !== '—' || extraKeys(q.id).some((k) => fmtAnswer(ans[k]) !== '—')).map((q) => (
-                  <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className="text-plum-900">{fmtAnswer(ans[q.id])}</dd><AnswerExtras ans={ans} qid={q.id} /></div>
+                {sec.questions.filter((q) => fmtAnswer(ans[q.id]) !== '—' || [detailsKey(q.id), reactionKey(q.id)].some((k) => fmtAnswer(ans[k]) !== '—')).map((q) => (
+                  <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className="text-plum-900">{answerText(q.id, ans)}</dd><AnswerExtras ans={ans} qid={q.id} /></div>
                 ))}
               </dl>
             )}

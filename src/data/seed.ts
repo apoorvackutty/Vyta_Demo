@@ -153,3 +153,22 @@ export const TESTELLE_INTAKE: Record<string, IntakeValue> = {
   Q80: 'No', Q81: 'No', Q82: 'No', Q83: 'No', Q84: 9, Q85: 'Time', Q86: 'Help me understand what my body needs at this stage.',
   Q87: '5 ft 6 in', Q88: '171 lb', Q89: 'I want to feel like myself again and keep up with my family.',
 };
+
+// Testelle's answers for the intake's structured extras (doses per supplement), plus fallbacks so the demo
+// fill never leaves a required field empty, whatever was ticked or typed. All fictional.
+export const TESTELLE_INTAKE_EXTRA: Record<string, IntakeValue> = {
+  Q26_dose: { 'Vitamin D3': '2,000 IU', magnesium: '300 mg', B12: '1,000 mcg', 'fish oil': '1,000 mg' },
+  Q26_often: { 'Vitamin D3': 'Daily', magnesium: 'Daily', B12: 'Daily', 'fish oil': 'Daily' },
+};
+export const DEMO_REQUIRED_FALLBACK = {
+  yearsAgo: 6,
+  dose: '1 tablet',
+  often: 'Daily',
+  text: {
+    Q21: 'Combined pill, 1 daily, 3 years',
+    Q23: 'Levothyroxine, 50 mcg daily, 2 years',
+    Q25: 'Ibuprofen, 200 mg as needed, several years',
+    Q28: 'BPC-157, 250 mcg daily, 6 weeks',
+  } as Record<string, string>,
+};
+

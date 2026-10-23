@@ -6,6 +6,7 @@ import type {
 import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION, TESTELLE_INTAKE } from '../data/seed';
 import { INTAKE } from '../data/intake';
 import { extraKeys } from '../lib/intakeFormat';
+import { fillRequired } from '../lib/intakeFlow';
 import { fmtDateTime, fmtDate, toMs } from '../lib/time';
 import { baselineLabs, draftFindings, draftPlan, BASELINE_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
 import { STAFF } from '../data/seed';
@@ -348,6 +349,6 @@ export function skipIntakeToEnd(d: DemoData, memberId: string, current: Record<s
     const answers = Object.fromEntries(
       sec.questions.flatMap((q) => [[q.id, chosen[q.id] ?? TESTELLE_INTAKE[q.id]], ...extraKeys(q.id).map((k) => [k, chosen[k]])]).filter(([, v]) => v !== undefined),
     );
-    saveIntake(d, memberId, sec.id, answers, true);
+    saveIntake(d, memberId, sec.id, { ...answers, ...fillRequired(sec.questions, answers, new Date(d.now).getFullYear()) }, true);
   }
 }

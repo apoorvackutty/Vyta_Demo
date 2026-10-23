@@ -10,8 +10,8 @@ import { FORMS, STAFF, BLOOD_DRAW_PREP } from '../../data/seed';
 import { PHASES, PROGRAM_LABEL, PROGRAM_ORDER, ProgramLadder, journeyLabel, phaseIndex, programIndex } from '../../components/domain';
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
-import { GRID_OPTIONS, detailsKey, extraKeys, reactionKey } from '../../lib/intakeFormat';
-import { GRID_SHORT, ORDERED_SINGLE, TEXT_HINTS, hasAnswer, isShown, stopLabel, toggleMulti, FOLLOW_UPS, DETAILS, wantsDetails, reactionHint, wantsReaction } from '../../lib/intakeFlow';
+import { GRID_OPTIONS, detailsKey, doseKey, extraKeys, oftenKey, reactionKey, yearsKey } from '../../lib/intakeFormat';
+import { GRID_SHORT, ORDERED_SINGLE, TEXT_HINTS, hasAnswer, isShown, stopLabel, toggleMulti, FOLLOW_UPS, DETAILS, wantsDetails, reactionHint, wantsReaction, requiredMissing, fillRequired, fieldId, listItems, surgeriesTicked, SURGERY_YEARS, DOSE_LISTS, OFTEN_OPTIONS, MIN_YEAR } from '../../lib/intakeFlow';
 import { fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { nextSlots, type SlotKind } from '../../lib/slots';
 import type { IntakeQuestion, IntakeValue } from '../../types';
@@ -380,7 +380,8 @@ function IntakeSectionView({ sid }: { sid: string }) {
   const idx = INTAKE.findIndex((x) => x.id === sid);
   const sec = INTAKE[idx];
   const [ans, setAns] = useState<Record<string, IntakeValue>>(() => Object.fromEntries((sec?.questions ?? []).flatMap((q) => [q.id, ...extraKeys(q.id)]).map((k) => [k, (s.intake[MEMBER_ID] ?? {})[k]]).filter(([, v]) => v !== undefined)));
-  const [check, setCheck] = useState<'none' | 'blanks' | 'safety'>('none');
+  const [check, setCheck] = useState<'none' | 'blanks' | 'safety' | 'required'>('none');
+  const year = new Date(s.now).getFullYear();
   if (!sec) return <MemberNotFound back="/intake" />;
   const set = (id: string, v: IntakeValue) => { setAns((a) => ({ ...a, [id]: v })); if (check === 'safety') setCheck('none'); };
   // Follow-ups stay hidden until the answer they hang off makes them relevant.
@@ -389,9 +390,20 @@ function IntakeSectionView({ sid }: { sid: string }) {
   // Free-text questions are follow-ups ("if yes, tell us more"), so only choice questions count as blank.
   const blank = shown.filter((q) => q.type !== 'text' && !hasAnswer(ans[q.id]));
   const safetyBlank = blank.filter((q) => q.safety);
+  // Years and doses are required once the answer above them makes them relevant; they block moving on, not Save & exit.
+  const missing = requiredMissing(shown, ans, year);
+  const errors: Record<string, string> = check === 'required' ? Object.fromEntries(missing.map((m) => [m.field, m.message])) : {};
+  const showField = (field?: string) => {
+    const el = field && document.querySelector<HTMLElement>(`[data-field="${CSS.escape(field)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+    el.focus({ preventScroll: true });
+  };
   const scrollTo = (qid?: string) => qid && document.getElementById(`q-${qid}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
   const advance = () => {
     if (safetyBlank.length) { setCheck('safety'); scrollTo(safetyBlank[0].id); return; }
+    // Scroll after the alert renders, or the layout change cancels the smooth scroll.
+    if (missing.length) { setCheck('required'); const f = missing[0].field; requestAnimationFrame(() => showField(f)); return; }
     if (blank.length && check !== 'blanks') { setCheck('blanks'); return; }
     save(true);
     const allDone = useDemo.getState().intakeDone[MEMBER_ID]?.length === INTAKE.length;
@@ -405,13 +417,17 @@ function IntakeSectionView({ sid }: { sid: string }) {
       <div className="px-4 pt-4">
         <h2 className="font-display text-[26px] font-semibold leading-tight text-plum-700">{sec.title}</h2>
         <DemoControls
-          onFill={() => setAns((cur) => ({ ...Object.fromEntries(sec.questions.map((q) => [q.id, TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined)), ...Object.fromEntries(Object.entries(cur).filter(([, v]) => v !== undefined && v !== '')) }))}
+          onFill={() => setAns((cur) => {
+            const merged = { ...Object.fromEntries(sec.questions.map((q) => [q.id, TESTELLE_INTAKE[q.id]]).filter(([, v]) => v !== undefined)), ...Object.fromEntries(Object.entries(cur).filter(([, v]) => v !== undefined && v !== '')) };
+            return { ...merged, ...fillRequired(sec.questions, merged, year) };
+          })}
           onSkip={() => { s.run((d) => ops.skipIntakeToEnd(d, MEMBER_ID, ans), 'Intake complete'); nav('/thanks/intake'); }}
         />
       </div>
       <div className="space-y-4 p-4">
         {shown.map((q, i) => <QuestionInput key={q.id} q={q} value={ans[q.id]} onChange={(v) => set(q.id, v)}
           pos={`Question ${i + 1} of ${shown.length}`} followUp={!!FOLLOW_UPS[q.id]}
+          all={ans} setKey={set} errors={errors} year={year}
           extras={[
             wantsDetails(q.id, ans) && { key: detailsKey(q.id), label: 'Add details', hint: DETAILS[q.id].hint },
             wantsReaction(q.id, ans) && { key: reactionKey(q.id), label: 'How did it go?', hint: reactionHint(q.id) },
@@ -426,6 +442,14 @@ function IntakeSectionView({ sid }: { sid: string }) {
         {check === 'safety' && (
           <p role="alert" className="mb-3 flex gap-2 rounded-lg bg-danger-bg p-3 text-[13px] text-danger-fg"><AlertCircle size={16} className="mt-0.5 shrink-0" />
             Please answer the {safetyBlank.length > 1 ? `${safetyBlank.length} safety questions` : 'safety question'}. They help your care team keep you safe.</p>
+        )}
+        {check === 'required' && missing.length > 0 && (
+          <div role="alert" className="mb-3 rounded-lg bg-danger-bg p-3 text-[13px] text-danger-fg">
+            <p className="flex gap-2"><AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+              {missing.length > 1 ? `${missing.length} details are needed` : 'One detail is needed'} before you go on. You can Save & exit and come back.</p>
+            <ul className="mt-1 list-disc pl-8">{missing.map((m) => <li key={m.field}>{m.message}</li>)}</ul>
+            <button type="button" className="mt-1 min-h-[44px] font-medium underline underline-offset-2" onClick={() => showField(missing[0]?.field)}>Show me</button>
+          </div>
         )}
         {check === 'blanks' && (
           <div role="alert" className="mb-3 rounded-lg bg-watch-bg p-3 text-[13px] text-watch-fg">
@@ -514,7 +538,73 @@ function StepSlider({ id, stops, index, onPick, valueText, ends }: { id: string;
 
 // An optional free-text box inside a question's card ("Add details", "How did it go?"). Never counts as blank.
 type Extra = { key: string; label: string; hint: string; value: IntakeValue | undefined; onChange: (v: string) => void };
-function QuestionInput({ q, value, onChange, flag, pos, followUp, extras = [] }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void; flag?: string; pos?: string; followUp?: boolean; extras?: Extra[] }) {
+function FieldError({ id, msg }: { id: string; msg?: string }) {
+  if (!msg) return null;
+  return <p id={id} className="mt-1 flex items-center gap-1.5 text-[13px] font-medium text-danger-fg"><AlertCircle size={14} aria-hidden className="shrink-0" />{msg}</p>;
+}
+
+// Required per-item fields: a year for each ticked surgery, a dose (and how often) for each listed medication.
+function ItemFields({ q, all, setKey, errors, year }: { q: IntakeQuestion; all: Record<string, IntakeValue>; setKey: (k: string, v: IntakeValue) => void; errors: Record<string, string>; year: number }) {
+  const rec = (k: string) => { const v = all[k]; return (v && typeof v === 'object' && !Array.isArray(v)) ? v as Record<string, string> : {}; };
+  if (SURGERY_YEARS.has(q.id)) {
+    const k = yearsKey(q.id), years = rec(k), ticked = surgeriesTicked(all[q.id]);
+    if (!ticked.length) return null;
+    return (
+      <div className="mt-4 space-y-3">
+        {ticked.map((sx, i) => {
+          const f = fieldId(k, sx), err = errors[f], id = `q-${q.id}-year-${i}`;
+          return (
+            <div key={sx}>
+              <label htmlFor={id} className="block text-[14px] font-medium text-plum-900">{sx}: year</label>
+              <input id={id} data-field={f} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={4} autoComplete="off" placeholder={`${MIN_YEAR}–${year}`}
+                aria-invalid={!!err || undefined} aria-describedby={err ? `${id}-err` : undefined}
+                className={clsx(inputCls, 'mt-1 h-12 w-32 text-[16px] tabular-nums', err && 'border-danger-fg')}
+                value={years[sx] ?? ''} onChange={(e) => setKey(k, { ...years, [sx]: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
+              <FieldError id={`${id}-err`} msg={err} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  if (DOSE_LISTS.has(q.id)) {
+    const dk = doseKey(q.id), ok = oftenKey(q.id), doses = rec(dk), often = rec(ok), items = listItems(all[q.id]);
+    if (!items.length) return null;
+    return (
+      <div className="mt-4 space-y-3">
+        {items.map((item, i) => {
+          const f = fieldId(dk, item), err = errors[f], id = `q-${q.id}-dose-${i}`;
+          return (
+            <div key={item} className="rounded-xl bg-cream-100 p-3">
+              <p className="mb-1.5 text-[14px] font-medium text-plum-900">{item}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor={id} className="block text-[13px] text-muted">Dose<span className="sr-only"> of {item}</span></label>
+                  <input id={id} data-field={f} type="text" autoComplete="off" placeholder="e.g. 2,000 IU"
+                    aria-invalid={!!err || undefined} aria-describedby={err ? `${id}-err` : undefined}
+                    className={clsx(inputCls, 'mt-1 h-12 text-[16px]', err && 'border-danger-fg')}
+                    value={doses[item] ?? ''} onChange={(e) => setKey(dk, { ...doses, [item]: e.target.value })} />
+                </div>
+                <div>
+                  <label htmlFor={`${id}-often`} className="block text-[13px] text-muted">How often <span className="sr-only">for {item}</span>(optional)</label>
+                  <select id={`${id}-often`} className={clsx(inputCls, 'mt-1 h-12 text-[16px]')} value={often[item] ?? ''} onChange={(e) => setKey(ok, { ...often, [item]: e.target.value })}>
+                    <option value="">Choose</option>
+                    {OFTEN_OPTIONS.map((o) => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+              <FieldError id={`${id}-err`} msg={err} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  return null;
+}
+
+type ItemProps = { all?: Record<string, IntakeValue>; setKey?: (k: string, v: IntakeValue) => void; errors?: Record<string, string>; year?: number };
+function QuestionInput({ q, value, onChange, flag, pos, followUp, extras = [], all = {}, setKey = () => {}, errors = {}, year = 2026 }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void; flag?: string; pos?: string; followUp?: boolean; extras?: Extra[] } & ItemProps) {
   const labelId = `q-${q.id}-label`;
   const box = (c: ReactNode, asGroup = true) => {
     const Wrap = asGroup ? 'fieldset' : 'div';
@@ -523,6 +613,7 @@ function QuestionInput({ q, value, onChange, flag, pos, followUp, extras = [] }:
         {pos && <p className="mb-1 text-[12px] font-medium uppercase tracking-wide text-muted">{pos}{followUp ? ' · follow-up' : ''}</p>}
         {asGroup ? <p id={labelId} className="mb-3 text-[15px] font-medium text-plum-900">{q.text}</p> : <label id={labelId} htmlFor={`q-${q.id}-in`} className="mb-3 block text-[15px] font-medium text-plum-900">{q.text}</label>}
         {c}
+        <ItemFields q={q} all={all} setKey={setKey} errors={errors} year={year} />
         {extras.map((x) => (
           <div key={x.key} className="mt-4">
             <label htmlFor={`q-${x.key}`} className="block text-[14px] font-medium text-plum-900">{x.label} <span className="font-normal text-muted">(optional)</span></label>
@@ -572,10 +663,17 @@ function QuestionInput({ q, value, onChange, flag, pos, followUp, extras = [] }:
   }
   if (q.type === 'date') return box(<input id={`q-${q.id}-in`} type="date" max={new Date().toISOString().slice(0, 10)} className={clsx(inputCls, 'h-12 text-[16px]')} value={str ?? ''} onChange={(e) => onChange(e.target.value)} />, false);
   const h = TEXT_HINTS[q.id] ?? {};
-  const common = { id: `q-${q.id}-in`, placeholder: h.placeholder, autoComplete: h.autoComplete ?? 'off', value: str ?? '', className: clsx(inputCls, 'text-[16px]') };
+  const err = errors[fieldId(q.id)];
+  const common = { id: `q-${q.id}-in`, 'data-field': fieldId(q.id), placeholder: h.placeholder, autoComplete: h.autoComplete ?? 'off', value: str ?? '',
+    'aria-invalid': !!err || undefined, 'aria-describedby': err ? `q-${q.id}-err` : DOSE_LISTS.has(q.id) ? `q-${q.id}-listhint` : undefined,
+    className: clsx(inputCls, 'text-[16px]', err && 'border-danger-fg') };
   return box(h.line
     ? <input type="text" enterKeyHint="next" autoCapitalize="sentences" {...common} className={clsx(common.className, 'h-12')} onChange={(e) => onChange(e.target.value)} />
-    : <textarea rows={h.rows ?? 2} autoCapitalize="sentences" {...common} onChange={(e) => onChange(e.target.value)} />, false);
+    : <>
+      <textarea rows={h.rows ?? 2} autoCapitalize="sentences" {...common} onChange={(e) => onChange(e.target.value)} />
+      {DOSE_LISTS.has(q.id) && !err && <p id={`q-${q.id}-listhint`} className="mt-1 text-[13px] text-muted">Separate each with a comma. We'll ask the dose for each one.</p>}
+      <FieldError id={`q-${q.id}-err`} msg={err} />
+    </>, false);
 }
 
 function BloodDraw() {
