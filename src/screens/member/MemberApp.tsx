@@ -12,6 +12,7 @@ import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
 import { GRID_OPTIONS } from '../../lib/intakeFormat';
 import { fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
+import { nextSlots, type SlotKind } from '../../lib/slots';
 import type { IntakeQuestion, IntakeValue } from '../../types';
 
 const MEMBER_ID = 'm-testelle';
@@ -477,6 +478,7 @@ function BloodDraw() {
   const { s, m, draw } = useMember();
   const [changeOpen, setChangeOpen] = useState(false);
   const guide = STAFF.find((x) => x.id === m.guideId)!;
+  const canChange = !!draw && ops.canRescheduleVisit(s, draw);
   return (
     <div className="pb-6">
       <Top title="Blood draw" back="/home" />
@@ -494,13 +496,14 @@ function BloodDraw() {
             {draw.status !== 'done' && (
               <div className="mt-4 flex gap-2">
                 <Button variant="secondary" className="flex-1" onClick={() => s.run((d) => ops.addToCalendar(d, draw.id), 'Added to your calendar')}>Add to calendar</Button>
-                <Button variant="ghost" className="flex-1" aria-expanded={changeOpen} onClick={() => setChangeOpen((o) => !o)}>Change time</Button>
+                {canChange && <Button variant="ghost" className="flex-1" aria-expanded={changeOpen} onClick={() => setChangeOpen((o) => !o)}>Change time</Button>}
               </div>
             )}
-            {changeOpen && draw.status !== 'done' && (
-              <p className="mt-3 rounded-lg bg-cream-100 p-3 text-[14px] text-plum-900">
-                To change the time, call the clinic on <a href="tel:+18015550142" className="font-medium text-terracotta-700 underline underline-offset-2">(801) 555-0142</a>, or tell {guide.name.split(' ')[0]}, your Guide, when she calls.
-              </p>
+            {changeOpen && canChange && (
+              <ChangeTime
+                kind="blood_draw" current={draw.at} guideFirst={guide.name.split(' ')[0]} onCancel={() => setChangeOpen(false)}
+                onConfirm={(at) => { s.run((d) => ops.rescheduleVisit(d, draw.id, at, 'member'), `Blood draw moved to ${fmtDateTime(at)}`); setChangeOpen(false); }}
+              />
             )}
           </section>
           {draw.status !== 'done' && (
@@ -516,15 +519,67 @@ function BloodDraw() {
   );
 }
 
+// Pick a new time, then confirm it. The clinic's phone number stays as the fallback.
+function ChangeTime({ kind, current, guideFirst, onConfirm, onCancel }: { kind: SlotKind; current: string; guideFirst: string; onConfirm: (at: string) => void; onCancel: () => void }) {
+  const now = useDemo((x) => x.now);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const slots = nextSlots(now, kind, current);
+  const days = [...new Set(slots.map((x) => x.day))];
+  if (confirming && picked) return (
+    <div className="mt-3 rounded-lg bg-cream-100 p-3" role="group" aria-label="Confirm the new time">
+      <p className="text-[14px] text-plum-900">Move from <span className="font-medium">{fmtDateTime(current)}</span> to</p>
+      <p className="font-display text-[22px] font-semibold text-plum-700">{fmtDateTime(picked)}</p>
+      <div className="mt-3 flex gap-2">
+        <Button variant="ghost" className="h-11 flex-1" onClick={() => setConfirming(false)}>Back</Button>
+        <Button className="h-11 flex-1" onClick={() => onConfirm(picked)}>Confirm new time</Button>
+      </div>
+    </div>
+  );
+  return (
+    <div className="mt-3 rounded-lg bg-cream-100 p-3">
+      <fieldset>
+        <legend className="mb-2 text-[14px] font-semibold text-plum-900">Choose a new time</legend>
+        <div className="space-y-3">
+          {days.map((day) => (
+            <div key={day}>
+              <p className="mb-1.5 text-[13px] text-muted">{day}</p>
+              <div className="flex flex-wrap gap-2">
+                {slots.filter((x) => x.day === day).map((x) => (
+                  <button key={x.at} type="button" aria-pressed={picked === x.at} onClick={() => setPicked(x.at)}
+                    className={clsx('flex min-h-[44px] min-w-[88px] items-center justify-center gap-1 rounded-full border px-4 text-[14px] font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-terracotta-500',
+                      picked === x.at ? 'border-plum-700 bg-plum-700 text-paper' : 'border-line bg-paper text-plum-900')}>
+                    {picked === x.at && <Check size={14} aria-hidden="true" />}{fmtTime(x.at)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </fieldset>
+      <div className="mt-3 flex gap-2">
+        <Button variant="ghost" className="h-11 flex-1" onClick={onCancel}>Keep current time</Button>
+        <Button className="h-11 flex-1" disabled={!picked} onClick={() => setConfirming(true)}>Next</Button>
+      </div>
+      <p className="mt-3 text-[13px] text-plum-900">
+        Can't find a time? Call the clinic on <a href="tel:+18015550142" className="font-medium text-terracotta-700 underline underline-offset-2">(801) 555-0142</a>, or tell {guideFirst}, your Guide.
+      </p>
+    </div>
+  );
+}
+
 function Status() {
-  const { m, consents, intake, draw } = useMember();
+  const { s, m, consents, intake, draw } = useMember();
+  const [changeOpen, setChangeOpen] = useState(false);
+  const guide = STAFF.find((x) => x.id === m.guideId)!;
+  const vytaDayShown = !!m.vytaDayAt && !!draw?.labsReceivedAt;
   const steps = [
     { label: 'Consents signed', done: consents.length > 0 && consents.every((c) => c.status === 'signed') },
     { label: 'Intake complete', done: intake?.status === 'signed' },
     { label: 'Blood drawn', done: draw?.status === 'done' },
     { label: 'Lab results in', done: !!draw?.labsReceivedAt },
     { label: 'Report being prepared by your care team', done: false },
-    { label: `Your Vyta Day${m.vytaDayAt && draw?.labsReceivedAt ? ` · ${fmtDate(m.vytaDayAt)}` : ''}`, done: false },
+    { label: `Your Vyta Day${vytaDayShown ? ` · ${fmtDate(m.vytaDayAt!)}` : ''}`, done: false },
   ];
   const lastDone = steps.map((x) => x.done).lastIndexOf(true);
   const current = steps.findIndex((x, i) => !x.done && i > lastDone);
@@ -540,6 +595,20 @@ function Status() {
           </li>
         ))}
       </ol>
+      {vytaDayShown && (
+        <section className="mx-4 mb-4 rounded-mcard bg-paper p-4 shadow-card" aria-label="Your Vyta Day">
+          <h2 className="text-[15px] font-semibold text-plum-900">Your Vyta Day</h2>
+          <p className="font-display text-[22px] font-semibold leading-tight text-plum-700">{fmtDate(m.vytaDayAt!)}</p>
+          <p className="text-[14px] text-plum-900">{fmtTime(m.vytaDayAt!)} · tests, results and your plan</p>
+          {ops.canRescheduleVytaDay(s, m) && !changeOpen && <Button variant="secondary" className="mt-3 h-11 w-full" onClick={() => setChangeOpen(true)}>Change time</Button>}
+          {changeOpen && ops.canRescheduleVytaDay(s, m) && (
+            <ChangeTime
+              kind="vyta_day" current={m.vytaDayAt!} guideFirst={guide.name.split(' ')[0]} onCancel={() => setChangeOpen(false)}
+              onConfirm={(at) => { s.run((d) => ops.rescheduleVytaDay(d, MEMBER_ID, at, 'member'), `Your Vyta Day moved to ${fmtDateTime(at)}`); setChangeOpen(false); }}
+            />
+          )}
+        </section>
+      )}
       <section className="mx-4 rounded-mcard bg-paper p-4 shadow-card" aria-label="Your care team">
         <h2 className="mb-3 text-[15px] font-semibold text-plum-900">Your care team</h2>
         <ul className="space-y-3">

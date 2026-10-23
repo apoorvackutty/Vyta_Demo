@@ -5,7 +5,7 @@ import type {
 } from '../types';
 import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION, TESTELLE_INTAKE } from '../data/seed';
 import { INTAKE } from '../data/intake';
-import { fmtDateTime, fmtDate } from '../lib/time';
+import { fmtDateTime, fmtDate, toMs } from '../lib/time';
 import { baselineLabs, draftFindings, draftPlan, BASELINE_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
 import { STAFF } from '../data/seed';
 import { canApprovePreReview, unfilled } from './guards';
@@ -146,6 +146,39 @@ export function confirmVisit(d: DemoData, visitId: string, byId: string) {
   v.status = 'confirmed';
   log(d, v.memberId, byId, 'visit_confirmed', `Blood draw confirmed with her for ${fmtDateTime(v.at)}`);
   notify(d, v.memberId, `Your blood draw is confirmed for ${fmtDateTime(v.at)}. Remember to fast for 12 hours.`);
+}
+
+// ---------- Changing appointment times (member or staff) ----------
+export interface RescheduleOpts { reason?: string; tellMember?: boolean }
+const isFuture = (d: DemoData, at: string) => toMs(at) > toMs(d.now);
+export const canRescheduleVisit = (d: DemoData, v: Visit) => v.status !== 'done' && v.status !== 'missed' && isFuture(d, v.at);
+export const canRescheduleVytaDay = (d: DemoData, m: Member) =>
+  !!m.vytaDayAt && isFuture(d, m.vytaDayAt) && !['first_30', 'ongoing', 'renewal'].includes(m.phase);
+const VISIT_LABEL: Partial<Record<Visit['type'], string>> = { blood_draw: 'Blood draw', vyta_day: 'Your Vyta Day' };
+const changedBy = (byId: string, reason?: string) => (byId === 'member' ? ' (changed in the app)' : '') + (reason?.trim() ? `. Reason: ${reason.trim()}` : '');
+
+// A moved visit goes back to "booked", so the MA confirms the new time with her again.
+export function rescheduleVisit(d: DemoData, visitId: string, newAt: string, byId: string, opts: RescheduleOpts = {}): boolean {
+  const v = d.visits.find((x) => x.id === visitId);
+  if (!v || !canRescheduleVisit(d, v) || !isFuture(d, newAt) || newAt === v.at) return false;
+  const label = VISIT_LABEL[v.type] ?? 'Visit';
+  const from = v.at;
+  v.at = newAt;
+  v.status = 'booked';
+  log(d, v.memberId, byId, 'visit_rescheduled', `${label} moved from ${fmtDateTime(from)} to ${fmtDateTime(newAt)}${changedBy(byId, opts.reason)}`);
+  if (byId !== 'member' && opts.tellMember !== false) notify(d, v.memberId, `${label.startsWith('Your') ? label : `Your ${label.toLowerCase()}`} has moved to ${fmtDateTime(newAt)}.${v.type === 'blood_draw' ? ' Remember to fast for 12 hours.' : ''}`);
+  refreshStep(d, v.memberId);
+  return true;
+}
+
+export function rescheduleVytaDay(d: DemoData, memberId: string, newAt: string, byId: string, opts: RescheduleOpts = {}): boolean {
+  const m = member(d, memberId);
+  if (!canRescheduleVytaDay(d, m) || !isFuture(d, newAt) || newAt === m.vytaDayAt) return false;
+  const from = m.vytaDayAt!;
+  m.vytaDayAt = newAt;
+  log(d, memberId, byId, 'visit_rescheduled', `Your Vyta Day moved from ${fmtDateTime(from)} to ${fmtDateTime(newAt)}${changedBy(byId, opts.reason)}`);
+  if (byId !== 'member' && opts.tellMember !== false) notify(d, memberId, `Your Vyta Day has moved to ${fmtDateTime(newAt)}.`);
+  return true;
 }
 
 // Simulated: the real app would hand her phone an .ics file (TRD §4).

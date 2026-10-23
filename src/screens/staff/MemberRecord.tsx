@@ -1,14 +1,15 @@
 // S3 Member record: header, phase tracker, milestones, tabs.
 import { useState } from 'react';
 import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ClipboardCheck, Droplet, FileSignature, FileText, Send } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ClipboardCheck, Droplet, FileSignature, FileText, Send } from 'lucide-react';
 import { useDemo, ops } from '../../state/store';
 import { useStaffRole } from '../../components/shell';
 import { JourneyTracker, MilestoneBar, BandChip, PROGRAM_LABEL, MENO_LABEL } from '../../components/domain';
-import { Avatar, Button, Card, Chip, EmptyState, ProgressBar, SectionTitle, Tabs } from '../../components/ui';
+import { Avatar, Button, Card, Chip, Dialog, EmptyState, Field, ProgressBar, SectionTitle, Tabs, inputCls } from '../../components/ui';
 import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
 import { ageYears, fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
+import { nextSlots, type SlotKind } from '../../lib/slots';
 import { fmtAnswer } from '../../lib/intakeFormat';
 import { SourceDialog, fmtValue } from '../../components/results';
 import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
@@ -33,6 +34,7 @@ export default function MemberRecord() {
   const s = useDemo();
   const [params, setParams] = useSearchParams();
   const [source, setSource] = useState<Result | null>(null);
+  const [moving, setMoving] = useState<SlotKind | null>(null);
   const allowed = (t: Tab) => role === 'admin' || TAB_ROLES[t].includes(role);
   const asked = params.get('tab') as Tab | null;
   const tab: Tab = asked && asked in TAB_ROLES && allowed(asked) ? asked : 'overview';
@@ -40,6 +42,7 @@ export default function MemberRecord() {
   const m = s.members.find((x) => x.id === id);
   if (!m) return <NotFound title="Member not found" body="She may have been removed, or the link is out of date." />;
   const by = STAFF_BY_ROLE[role];
+  const canMove = role === 'guide' || role === 'ma' || role === 'admin';
   const forms = s.assignments.filter((a) => a.memberId === m.id);
   const intake = forms.find((a) => a.formId === 'f-intake');
   const draw = s.visits.find((v) => v.memberId === m.id && v.type === 'blood_draw');
@@ -122,8 +125,15 @@ export default function MemberRecord() {
                           {draw.status === 'booked' && <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.confirmVisit(d, draw.id, by), 'Blood draw confirmed')}>Confirm</Button>}
                           {(draw.status === 'booked' || draw.status === 'confirmed') && <Button size="sm" variant="secondary" onClick={() => s.run((d) => ops.markDrawn(d, draw.id, by), 'Marked as drawn')}>Mark drawn</Button>}
                           {draw.status === 'done' && !draw.labsReceivedAt && <Button size="sm" onClick={() => s.run((d) => ops.labsReceived(d, draw.id, by), 'Labs received')}>Labs received</Button>}
+                          {canMove && ops.canRescheduleVisit(s, draw) && <Button size="sm" variant="ghost" onClick={() => setMoving('blood_draw')}>Reschedule</Button>}
                         </span>
                       )}
+                    </li>
+                  )}
+                  {m.vytaDayAt && (
+                    <li className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="flex items-center gap-2"><CalendarDays size={16} className="text-terracotta-700" /> Your Vyta Day {fmtDateTime(m.vytaDayAt)}</span>
+                      {canMove && ops.canRescheduleVytaDay(s, m) && <Button size="sm" variant="ghost" onClick={() => setMoving('vyta_day')}>Reschedule</Button>}
                     </li>
                   )}
                   {report && reportLine && (
@@ -322,11 +332,62 @@ export default function MemberRecord() {
         )}
       </div>
       <SourceDialog result={source} results={results} onClose={() => setSource(null)} />
+      {moving && (
+        <RescheduleDialog
+          kind={moving} current={moving === 'blood_draw' ? draw!.at : m.vytaDayAt!} firstName={m.name.split(' ')[0]} onClose={() => setMoving(null)}
+          onSave={(at, reason, tellMember) => {
+            const what = moving === 'blood_draw' ? 'Blood draw' : 'Your Vyta Day';
+            s.run((d) => (moving === 'blood_draw' ? ops.rescheduleVisit(d, draw!.id, at, by, { reason, tellMember }) : ops.rescheduleVytaDay(d, m.id, at, by, { reason, tellMember })),
+              `${what} moved to ${fmtDateTime(at)}${tellMember ? ` · ${m.name.split(' ')[0]} notified` : ''}`);
+            setMoving(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 const PIN = ['Q06', 'Q07', 'Q13', 'Q44', 'Q80', 'Q81', 'Q82', 'Q83'];
+const REASONS = ['Member asked', 'Clinic change', 'Other'] as const;
+function RescheduleDialog({ kind, current, firstName, onClose, onSave }: { kind: SlotKind; current: string; firstName: string; onClose: () => void; onSave: (at: string, reason: string, tellMember: boolean) => void }) {
+  const now = useDemo((x) => x.now);
+  const [at, setAt] = useState('');
+  const [reason, setReason] = useState<(typeof REASONS)[number]>('Member asked');
+  const [other, setOther] = useState('');
+  const [tell, setTell] = useState(true);
+  const slots = nextSlots(now, kind, current);
+  const ready = !!at && (reason !== 'Other' || other.trim().length > 0);
+  return (
+    <Dialog
+      open title={`Reschedule ${kind === 'blood_draw' ? 'blood draw' : 'Your Vyta Day'}`} onClose={onClose}
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!ready} onClick={() => onSave(at, reason === 'Other' ? other.trim() : reason, tell)}>Reschedule</Button></>}
+    >
+      <p className="text-sm text-plum-900">Now booked for <span className="font-medium">{fmtDateTime(current)}</span>.</p>
+      <Field label="New time" htmlFor="rs-slot">
+        <select id="rs-slot" className={inputCls} value={at} onChange={(e) => setAt(e.target.value)}>
+          <option value="">Choose a time</option>
+          {slots.map((x) => <option key={x.at} value={x.at}>{fmtDateTime(x.at)}</option>)}
+        </select>
+      </Field>
+      <Field label="Reason" htmlFor="rs-reason">
+        <select id="rs-reason" className={inputCls} value={reason} onChange={(e) => setReason(e.target.value as (typeof REASONS)[number])}>
+          {REASONS.map((r) => <option key={r}>{r}</option>)}
+        </select>
+      </Field>
+      {reason === 'Other' && (
+        <Field label="What happened?" htmlFor="rs-other" hint="Required. Goes on her timeline.">
+          <input id="rs-other" className={inputCls} value={other} onChange={(e) => setOther(e.target.value)} />
+        </Field>
+      )}
+      <label className="flex items-center gap-2 text-sm text-plum-900">
+        <input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} className="h-4 w-4 accent-plum-700" />
+        Let her know
+      </label>
+      {!tell && <p className="text-xs text-muted">{firstName} won't get a notice. Tell her another way.</p>}
+    </Dialog>
+  );
+}
+
 function IntakeTab({ memberId }: { memberId: string }) {
   const s = useDemo();
   const ans = s.intake[memberId] ?? {};
