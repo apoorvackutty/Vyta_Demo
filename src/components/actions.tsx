@@ -32,6 +32,12 @@ export function useQueueActions(role: StaffRole) {
       case 'mark_drawn': run((d) => ops.markDrawn(d, a.visitId, by), 'Marked as drawn · sent to lab'); break;
       case 'labs_received': run((d) => ops.labsReceived(d, a.visitId, by), 'Labs received · building the draft HEAL plan'); break;
       case 'pre_review': nav(`/staff/np/pre-review/${a.memberId}`); break;
+      case 'start_visit': {
+        const v = useDemo.getState().visits.find((x) => x.id === a.visitId);
+        if (v && (role === 'ma' || role === 'admin') && !ops.visitStarted(v) && v.completeness !== 'passed') run((d) => ops.startVisit(d, a.visitId, by), 'Visit started · InBody first');
+        nav(`/staff/${role}/visit/${a.visitId}`);
+        break;
+      }
     }
   }, [nav, role, run, by]);
 

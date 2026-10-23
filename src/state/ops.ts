@@ -1,7 +1,7 @@
 // Pure data operations. Each op mutates a cloned DemoData draft. Every op writes a TimelineEvent.
 import type {
   Member, FormAssignment, Visit, SafetyFlag, FollowUp, TimelineEvent, MemberNotice, IntakeValue, MenoStatus, Milestone,
-  Result, Report, Approval, Finding, PlanField,
+  Result, Report, Approval, Finding, PlanField, Station,
 } from '../types';
 import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION, TESTELLE_INTAKE } from '../data/seed';
 import { INTAKE } from '../data/intake';
@@ -10,7 +10,8 @@ import { fillRequired } from '../lib/intakeFlow';
 import { fmtDateTime, fmtDate, toMs } from '../lib/time';
 import { baselineLabs, draftFindings, draftPlan, BASELINE_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
 import { STAFF } from '../data/seed';
-import { canApprovePreReview, unfilled } from './guards';
+import { canApprovePreReview, canPassCompleteness, unfilled } from './guards';
+import { STATIONS, stationOf, uploadResults, bandFor, resultId, FUNCTIONAL, functionalBand, type FunctionalId } from '../data/stations';
 
 export interface DemoData {
   now: string;
@@ -327,6 +328,127 @@ export function sendBackDraft(d: DemoData, reportId: string, reason: string, byI
   refreshStep(d, r.memberId);
 }
 
+// ---------- Coach wording review (C1, task 18). Scenario 4 uses it to move the draft on. ----------
+export function approveWording(d: DemoData, reportId: string, byId: string): boolean {
+  const r = report(d, reportId);
+  if (r.status !== 'pre_reviewed') return false;
+  r.status = 'ready_for_visit';
+  d.approvals.push({ id: id(d, 'ap'), gate: 'coach_wording', memberId: r.memberId, reportId: r.id, reportVersion: r.version, outcome: 'approved', byId, at: d.now });
+  log(d, r.memberId, byId, 'approval', `Coach wording review approved · v${r.version} · ${staffName(byId)}. Ready for Your Vyta Day`);
+  refreshStep(d, r.memberId);
+  return true;
+}
+
+// ---------- Your Vyta Day: MA stations (MA1, MA3) ----------
+export const vytaDayVisit = (d: DemoData, memberId: string) => d.visits.find((v) => v.memberId === memberId && v.type === 'vyta_day');
+const visitOf = (d: DemoData, visitId: string) => d.visits.find((v) => v.id === visitId && v.type === 'vyta_day' && v.stations);
+const stationLabel = (st: Station) => stationOf(st).label;
+
+export function bookVytaDayVisit(d: DemoData, memberId: string, byId: string) {
+  const m = member(d, memberId);
+  if (!m.vytaDayAt || vytaDayVisit(d, memberId)) return;
+  d.visits.push({
+    id: id(d, 'v'), memberId, type: 'vyta_day', at: m.vytaDayAt, location: 'Vyta MenoClinic, Salt Lake City', status: 'confirmed',
+    maId: m.maId, npId: m.npId, completeness: 'open',
+    stations: { inbody: 'todo', functional: 'todo', shapescale: 'todo', vo2: 'todo' },
+  });
+  m.phase = 'vyta_day';
+  m.step = 'Your Vyta Day booked · report ready for the visit';
+  log(d, memberId, byId, 'visit_booked', `Your Vyta Day confirmed for ${fmtDateTime(m.vytaDayAt)}: InBody, functional tests, ShapeScale, VO2 max`);
+}
+
+export const visitStarted = (v: { stations?: Record<Station, string> }) => !!v.stations && Object.values(v.stations).some((x) => x !== 'todo');
+
+export function startVisit(d: DemoData, visitId: string, byId: string): boolean {
+  const v = visitOf(d, visitId);
+  if (!v || visitStarted(v) || v.completeness === 'passed') return false;
+  v.stations!.inbody = 'in_progress';
+  const r = d.reports.find((x) => x.memberId === v.memberId && x.kind === 'baseline');
+  if (r?.status === 'ready_for_visit') r.status = 'final_review';
+  member(d, v.memberId).step = 'Your Vyta Day · tests in progress';
+  log(d, v.memberId, byId, 'visit_started', `Your Vyta Day started by ${staffName(byId)}: checked in, InBody first`);
+  return true;
+}
+
+// Simulated upload (TRD §4): fills the station with the seeded values. The station is done and sent to the NP.
+export function uploadStation(d: DemoData, visitId: string, station: Exclude<Station, 'functional'>, byId: string) {
+  const v = visitOf(d, visitId);
+  if (!v || v.completeness === 'passed') return;
+  const rows = uploadResults(v.memberId, v.id, station);
+  d.results = d.results.filter((r) => !(r.visitId === v.id && r.panel === stationOf(station).panel)).concat(rows);
+  v.stations![station] = 'done';
+  log(d, v.memberId, byId, 'station_done', `${stationLabel(station)} report uploaded: ${rows.length} values. Sent to the NP`);
+}
+
+export function editStationResult(d: DemoData, resultIdArg: string, value: number | string | null, byId: string) {
+  const r = d.results.find((x) => x.id === resultIdArg);
+  const st = STATIONS.find((x) => x.panel === r?.panel);
+  const v = r?.visitId ? visitOf(d, r.visitId) : undefined;
+  if (!r || !st || !v || v.completeness === 'passed' || r.value === value) return;
+  const before = r.value;
+  r.value = value;
+  r.band = bandFor(st.id, r.marker, value);
+  log(d, r.memberId, byId, 'result_edit', `${st.label} · ${r.marker}: ${before ?? '—'} → ${value ?? '—'}${r.unit ? ` ${r.unit}` : ''}`);
+}
+
+export function startStation(d: DemoData, visitId: string, station: Station, byId: string) {
+  const v = visitOf(d, visitId);
+  if (!v || v.stations![station] !== 'todo' || v.completeness === 'passed') return;
+  v.stations![station] = 'in_progress';
+  log(d, v.memberId, byId, 'station_started', `${stationLabel(station)} started`);
+}
+
+export type FunctionalEntry = Partial<Record<FunctionalId, number | string>>;
+export function saveFunctional(d: DemoData, visitId: string, entry: FunctionalEntry, byId: string): boolean {
+  const v = visitOf(d, visitId);
+  if (!v || v.completeness === 'passed') return false;
+  if (FUNCTIONAL.some((t) => t.scored && functionalBand(t.id, entry[t.id]) === null)) return false;
+  const rows: Result[] = FUNCTIONAL.filter((t) => entry[t.id] !== undefined && entry[t.id] !== '').map((t) => ({
+    id: resultId(v.id, 'functional', t.marker), memberId: v.memberId, visitId: v.id, panel: 'Functional', marker: t.marker,
+    value: entry[t.id]!, unit: t.unit, target: t.scored ? `${t.rule} (illustrative)` : 'Recorded, not scored',
+    band: functionalBand(t.id, entry[t.id]) ?? 'not_scored', source: stationOf('functional').source,
+  }));
+  const again = v.stations!.functional === 'done';
+  d.results = d.results.filter((r) => !(r.visitId === v.id && r.panel === 'Functional')).concat(rows);
+  v.stations!.functional = 'done';
+  const grip = rows.find((r) => r.marker === 'Grip strength');
+  log(d, v.memberId, byId, 'station_done', `Functional tests ${again ? 'updated' : 'entered'}: ${rows.length} results${grip ? `, grip ${grip.value} lb` : ''}. Sent to the NP`);
+  return true;
+}
+
+// Skip with reason: kept as a skipped result so the NP sees why, and left out of every score (never zero).
+export function skipStation(d: DemoData, visitId: string, station: Station, reason: string, byId: string) {
+  const v = visitOf(d, visitId);
+  if (!v || !reason.trim() || v.completeness === 'passed') return;
+  const st = stationOf(station);
+  d.results = d.results.filter((r) => !(r.visitId === v.id && r.panel === st.panel)).concat({
+    id: resultId(v.id, station, 'skipped'), memberId: v.memberId, visitId: v.id, panel: st.panel, marker: `${st.label} scan`,
+    value: null, band: 'not_scored', source: st.source, skipped: { reason: reason.trim(), byId, at: d.now }, excludedFromScore: true,
+  });
+  v.stations![station] = 'skipped';
+  log(d, v.memberId, byId, 'station_skipped', `${st.label} skipped: "${reason.trim()}". Left out of her scores, not counted as zero`);
+}
+
+export function unskipStation(d: DemoData, visitId: string, station: Station, byId: string) {
+  const v = visitOf(d, visitId);
+  if (!v || v.stations![station] !== 'skipped' || v.completeness === 'passed') return;
+  d.results = d.results.filter((r) => r.id !== resultId(v.id, station, 'skipped'));
+  v.stations![station] = 'in_progress';
+  log(d, v.memberId, byId, 'station_unskipped', `${stationLabel(station)} no longer skipped: entering results instead`);
+}
+
+export function passCompleteness(d: DemoData, visitId: string, byId: string): boolean {
+  const v = visitOf(d, visitId);
+  if (!v || !canPassCompleteness(v).ok) return false;
+  v.completeness = 'passed';
+  v.status = 'done';
+  const skipped = STATIONS.filter((s) => v.stations![s.id] === 'skipped').map((s) => s.label);
+  d.approvals.push({ id: id(d, 'ap'), gate: 'completeness', memberId: v.memberId, outcome: 'approved', byId, at: d.now });
+  member(d, v.memberId).step = 'Your Vyta Day · waiting on NP final review';
+  log(d, v.memberId, byId, 'approval', `Completeness check passed by ${staffName(byId)}: every test in${skipped.length ? ` or skipped with a reason (${skipped.join(', ')})` : ''}. Final review is with the NP`);
+  return true;
+}
+
 export function refreshStep(d: DemoData, memberId: string) {
   const m = member(d, memberId);
   if (m.phase !== 'intake_labs') return;
@@ -338,6 +460,7 @@ export function refreshStep(d: DemoData, memberId: string) {
   const labsPart = rep?.status === 'building' ? 'draft building'
     : rep?.status === 'draft' ? 'waiting on NP pre-review'
       : rep?.status === 'pre_reviewed' ? 'waiting on Coach wording review'
+        : rep?.status === 'ready_for_visit' ? 'report ready for Your Vyta Day'
         : draw?.labsReceivedAt ? 'labs received' : draw?.status === 'done' ? 'labs awaited' : 'blood draw booked';
   m.step = `${intakePart} · ${labsPart}`;
 }

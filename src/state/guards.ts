@@ -1,5 +1,6 @@
 // Gate guards (docs/SCHEMA.md §4). The UI disables the gate button and lists `missing` in plain words.
-import type { PlanItem, PlanField, Report, Result } from '../types';
+import type { PlanItem, PlanField, Report, Result, Visit } from '../types';
+import { STATIONS } from '../data/stations';
 import { FIELD_LABEL, BAND_RANK } from '../data/protocol';
 
 const empty = (v?: string) => !v || !v.trim();
@@ -45,4 +46,17 @@ export function canApprovePreReview(report: Report, results: Result[]): GateChec
     itemsResolved: report.plan.length - open.length,
     itemsTotal: report.plan.length,
   };
+}
+
+// Completeness check (MA3 footer, PRD V4): every test is either in or skipped with a reason.
+export function canPassCompleteness(visit: Visit): { ok: boolean; missing: string[] } {
+  const missing: string[] = [];
+  if (!visit.stations) return { ok: false, missing: ['This visit has no test stations'] };
+  for (const st of STATIONS) {
+    const status = visit.stations[st.id];
+    if (status === 'todo') missing.push(`${st.label}: not started`);
+    else if (status === 'in_progress') missing.push(`${st.label}: results not saved yet`);
+  }
+  if (visit.completeness === 'passed') missing.push('Completeness has already passed');
+  return { ok: missing.length === 0, missing };
 }

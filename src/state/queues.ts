@@ -2,8 +2,10 @@
 import type { QueueItem, StaffRole, QueueCategory } from '../types';
 import type { DemoData } from './ops';
 import { STATIC_TASKS } from '../data/seed';
-import { canApprovePreReview } from './guards';
-import { ageLabel, daysBetween, fmtDateTime, fmtDate, toMs } from '../lib/time';
+import { canApprovePreReview, canPassCompleteness } from './guards';
+import { visitStarted } from './ops';
+import { STATIONS } from '../data/stations';
+import { ageLabel, daysBetween, fmtDateTime, fmtDate, fmtTime, toMs } from '../lib/time';
 
 function snoozed(d: DemoData, taskKey: string) {
   return d.followUps.some((f) => f.taskKey === taskKey && toMs(f.dueAt) > toMs(d.now));
@@ -80,6 +82,28 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
       });
     }
 
+    for (const v of d.visits.filter((x) => x.memberId === m.id && x.type === 'vyta_day' && x.stations)) {
+      const st = v.stations!;
+      const left = STATIONS.filter((x) => st[x.id] === 'todo' || st[x.id] === 'in_progress');
+      if (v.completeness !== 'passed' && v.at.slice(0, 10) === d.now.slice(0, 10)) {
+        const started = visitStarted(v);
+        items.push({
+          key: `vyta-day-${v.id}`, memberId: m.id, category: 'visits', roles: ['ma', 'guide', 'np'],
+          label: `Your Vyta Day · ${fmtTime(v.at).replace(' am', '')}`,
+          reason: started ? `${STATIONS.length - left.length} of ${STATIONS.length} tests in · next: ${left[0]?.label ?? 'completeness check'}` : `Tests: ${STATIONS.map((x) => x.label).join(' · ')}`,
+          ageLabel: '—', priority: 1,
+          primary: role === 'ma' || role === 'admin'
+            ? { label: started ? 'Continue visit' : 'Start visit', action: { type: 'start_visit', visitId: v.id } }
+            : { label: 'Open', action: { type: 'open_record', memberId: m.id } },
+        });
+      }
+      if (v.completeness !== 'passed' && canPassCompleteness(v).ok) items.push({
+        key: `completeness-${v.id}`, memberId: m.id, category: 'visits', roles: ['ma', 'np'],
+        label: 'Completeness check', reason: 'Every test is in or skipped with a reason · owner: MA or NP (to confirm)', ageLabel: '—', priority: 1,
+        primary: { label: 'Open visit', action: { type: 'start_visit', visitId: v.id } },
+      });
+    }
+
     for (const r of d.reports.filter((x) => x.memberId === m.id)) {
       if (r.status === 'building') items.push({
         key: `report-${r.id}`, memberId: m.id, category: 'reviews', roles: ['np'],
@@ -96,6 +120,19 @@ export function getQueue(d: DemoData, role: StaffRole): QueueItem[] {
           reason: `Draft v${r.version} · ${check.findingsTotal - check.findingsDecided} findings to decide · ${check.itemsTotal - check.itemsResolved} plan items need review`,
           ageLabel: ageLabel(r.builtAt ?? d.now, d.now), priority: 1,
           primary: { label: 'Pre-review', action: { type: 'pre_review', memberId: m.id } },
+        });
+      }
+      // N3 itself is task 20: for now the task opens her record.
+      const day = d.visits.find((v) => v.memberId === m.id && v.type === 'vyta_day');
+      if (r.status === 'final_review' && day?.completeness === 'passed') {
+        const skipped = STATIONS.filter((x) => day.stations?.[x.id] === 'skipped').map((x) => x.label);
+        const passed = d.approvals.filter((a) => a.memberId === m.id && a.gate === 'completeness').slice(-1)[0];
+        items.push({
+          key: `final-${r.id}`, memberId: m.id, category: 'reviews', roles: ['np'],
+          label: 'Final review · Your Vyta Day',
+          reason: `All tests in${skipped.length ? ` · ${skipped.join(', ')} skipped, left out of scores` : ''} · only what changed since pre-review`,
+          ageLabel: ageLabel(passed?.at ?? d.now, d.now), priority: 1,
+          primary: { label: 'Open', action: { type: 'open_record', memberId: m.id } },
         });
       }
       if (r.status === 'pre_reviewed') {

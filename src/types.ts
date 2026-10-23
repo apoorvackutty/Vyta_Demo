@@ -88,7 +88,13 @@ export interface Visit {
   location: string;
   status: 'booked' | 'confirmed' | 'done' | 'missed';
   labsReceivedAt?: string;
+  maId?: string;
+  npId?: string;
+  stations?: Record<Station, StationStatus>; // Your Vyta Day only
+  completeness?: 'open' | 'passed';
 }
+export type Station = 'inbody' | 'functional' | 'shapescale' | 'vo2';
+export type StationStatus = 'todo' | 'in_progress' | 'done' | 'skipped';
 
 export interface SafetyFlag {
   id: string;
@@ -160,7 +166,8 @@ export type QueueAction =
   | { type: 'confirm_visit'; visitId: string }
   | { type: 'mark_drawn'; visitId: string }
   | { type: 'labs_received'; visitId: string }
-  | { type: 'pre_review'; memberId: string };
+  | { type: 'pre_review'; memberId: string }
+  | { type: 'start_visit'; visitId: string };
 
 // ---------- Results, report and plan (SCHEMA §1) ----------
 export type Band =
@@ -175,7 +182,9 @@ export interface Result {
   unit?: string;
   target?: string;
   band: Band;
-  source: string; // "Lab report p.3"
+  source: string; // "Lab report p.3" or "InBody scan"
+  skipped?: { reason: string; byId: string; at: string };
+  excludedFromScore?: boolean; // skipped tests are left out of scores, never counted as zero
 }
 
 export interface Scores {

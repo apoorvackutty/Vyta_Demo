@@ -1,5 +1,8 @@
 import type { DemoData } from './ops';
-import { onboard, signForm, saveIntake, markDrawn, confirmVisit, labsReceived, finishDraft, skipIntakeToEnd, log } from './ops';
+import {
+  onboard, signForm, saveIntake, markDrawn, confirmVisit, labsReceived, finishDraft, skipIntakeToEnd, log,
+  acceptSuggestions, editPlanItem, removePlanItem, reviewPlanItem, approvePreReview, approveWording, bookVytaDayVisit,
+} from './ops';
 import { TESTELLE_BASE, ROSTER, TESTELLE_INTAKE, BLOOD_DRAW_SLOTS } from '../data/seed';
 import { INTAKE } from '../data/intake';
 import { fillRequired } from '../lib/intakeFlow';
@@ -10,7 +13,7 @@ export const SCENARIOS: { id: ScenarioId; label: string; ready: boolean }[] = [
   { id: 'day0', label: '1 · Day 0 – after discovery call', ready: true },
   { id: 'intake_stalled', label: '2 · Intake in progress (stalled)', ready: true },
   { id: 'labs_back', label: '3 · Labs back – draft for NP', ready: true },
-  { id: 'vyta_day', label: '4 · Your Vyta Day – morning', ready: false },
+  { id: 'vyta_day', label: '4 · Your Vyta Day – morning', ready: true },
   { id: 'released', label: '5 · After release – member home', ready: false },
   { id: 'safety', label: '6 · Safety flag raised', ready: false },
   { id: 'quarterly', label: '7 · 3-month review', ready: false },
@@ -70,7 +73,27 @@ function labsBack(): DemoData {
   return d;
 }
 
+// Dana approved the pre-review on 19 Oct, Sienna checked the wording on 20 Oct. Wed 28 Oct, 8:15: Jordan's morning.
+function vytaDay(): DemoData {
+  const d = labsBack();
+  const rid = 'r-m-testelle-baseline';
+  d.now = '2026-10-19T09:40';
+  acceptSuggestions(d, rid, 's-np');
+  editPlanItem(d, rid, 'pi-testosterone', 'dose', '0.5 mg', 's-np');
+  editPlanItem(d, rid, 'pi-iron', 'dose', '25 mg elemental', 's-np');
+  removePlanItem(d, rid, 'pi-tirzepatide', true, 's-np');
+  for (const item of ['pi-testosterone', 'pi-iron', 'pi-fiber', 'pi-strength', 'pi-winddown']) reviewPlanItem(d, rid, item, 's-np');
+  approvePreReview(d, rid, 's-np');
+  d.now = '2026-10-20T10:15';
+  approveWording(d, rid, 's-coach');
+  d.now = '2026-10-27T16:00';
+  bookVytaDayVisit(d, 'm-testelle', 's-ma');
+  d.now = '2026-10-28T08:15';
+  return d;
+}
+
 export function buildScenario(id: ScenarioId): DemoData {
+  if (id === 'vyta_day') return vytaDay();
   if (id === 'intake_stalled') return intakeStalled();
   if (id === 'labs_back') return labsBack();
   return day0();

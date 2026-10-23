@@ -14,7 +14,7 @@ import { detailsKey, doseKey, fmtAnswer, oftenKey, reactionKey, yearsKey } from 
 import { DOSE_LISTS, SURGERY_YEARS, listItems } from '../../lib/intakeFlow';
 import { SourceDialog, fmtValue } from '../../components/results';
 import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
-import type { IntakeValue, Result, StaffRole } from '../../types';
+import type { IntakeValue, Result, StaffRole, Visit } from '../../types';
 import NotFound from './NotFound';
 
 type Tab = 'overview' | 'timeline' | 'forms' | 'intake' | 'results' | 'report' | 'notes' | 'orders' | 'sage';
@@ -53,16 +53,22 @@ export default function MemberRecord() {
   const unsigned = forms.filter((f) => f.status !== 'signed').length;
   const report = s.reports.find((r) => r.memberId === m.id && r.kind === 'baseline');
   const results = s.results.filter((r) => r.memberId === m.id);
+  const dayVisit = s.visits.find((v) => v.memberId === m.id && v.type === 'vyta_day');
+  const dayResults = results.filter((r) => dayVisit && r.visitId === dayVisit.id);
+  const labs = results.filter((r) => !dayResults.includes(r));
   const reportLine = !report ? null
     : report.status === 'building' ? 'Draft HEAL plan building'
       : report.status === 'draft' ? `Draft v${report.version} · waiting on NP pre-review`
-        : report.status === 'pre_reviewed' ? `Draft v${report.version} pre-reviewed · waiting on Coach wording review` : `Report v${report.version}`;
+        : report.status === 'pre_reviewed' ? `Draft v${report.version} pre-reviewed · waiting on Coach wording review`
+          : `Report v${report.version} · ${STATUS_WORDS[report.status].toLowerCase()}`;
 
   // Roster members aren't playable in the demo; their seeded step says what they're waiting on.
   const waiting = !m.isLead ? { what: m.step, owner: `${staffName(m.guideId).split(' ')[0]} (Guide)` }
     : m.phase === 'join' ? { what: 'Onboarding', owner: 'Maya (Guide)' }
     : intake && intake.status !== 'signed' ? { what: `Her intake (${Math.round((intake.progress ?? 0) * 100)}%)`, owner: `${m.name.split(' ')[0]} · Maya follows up` }
       : draw && !draw.labsReceivedAt ? { what: draw.status === 'done' ? 'Lab results' : 'Blood draw', owner: 'Jordan (MA)' }
+        : dayVisit?.completeness === 'passed' ? { what: 'NP final review', owner: 'Dana (NP)' }
+        : dayVisit ? { what: 'Your Vyta Day tests', owner: 'Jordan (MA)' }
         : report?.status === 'pre_reviewed' ? { what: 'Coach wording review', owner: 'Sienna (Coach)' }
           : report?.status === 'building' ? { what: 'Draft HEAL plan (building)', owner: 'System' }
             : { what: 'NP pre-review', owner: 'Dana (NP)' };
@@ -309,12 +315,12 @@ export default function MemberRecord() {
               <>
                 <SectionTitle action={reportLine && <span className="text-xs text-muted">{reportLine}</span>}>Baseline labs · received {fmtDate(draw.labsReceivedAt)}</SectionTitle>
                 <div className="grid gap-x-8 xl:grid-cols-2">
-                  {[...new Set(results.map((r) => r.panel))].map((panel) => (
+                  {[...new Set(labs.map((r) => r.panel))].map((panel) => (
                     <div key={panel} className="mb-4">
                       <h3 className="mb-1 text-[13px] font-medium text-muted">{panel}</h3>
                       <table className="w-full text-sm">
                         <tbody>
-                          {results.filter((r) => r.panel === panel).map((r) => (
+                          {labs.filter((r) => r.panel === panel).map((r) => (
                             <tr key={r.id} className="border-t border-line">
                               <td className="py-1.5 text-plum-900">{r.marker}</td>
                               <td className="tabular-nums text-plum-900">{fmtValue(r)}</td>
@@ -327,6 +333,7 @@ export default function MemberRecord() {
                     </div>
                   ))}
                 </div>
+                <VytaDayResults results={dayResults} visit={dayVisit} />
               </>
             ) : <EmptyState title="No results yet" body={draw ? `Blood draw ${draw.status === 'done' ? 'done' : 'booked'} for ${fmtDateTime(draw.at)}.` : 'Results appear here after her blood draw and Your Vyta Day.'} />}
           </Card>
@@ -413,6 +420,38 @@ function AnswerExtras({ ans, qid }: { ans: Record<string, IntakeValue>; qid: str
       )}
       <AnswerNote v={ans[detailsKey(qid)]} label="Member's details" />
       <AnswerNote v={ans[reactionKey(qid)]} label="How she reacted" />
+    </>
+  );
+}
+
+// Your Vyta Day results (MA3), shown under the labs with their source. Skipped tests say why and that they don't count as zero.
+function VytaDayResults({ results, visit }: { results: Result[]; visit?: Visit }) {
+  if (!visit || !results.length) return null;
+  return (
+    <>
+      <SectionTitle>Your Vyta Day · {fmtDate(visit.at)}</SectionTitle>
+      <div className="grid gap-x-8 xl:grid-cols-2">
+        {[...new Set(results.map((r) => r.panel))].map((panel) => (
+          <div key={panel} className="mb-4">
+            <h3 className="mb-1 text-[13px] font-medium text-muted">{panel} · source: {results.find((r) => r.panel === panel)!.source}</h3>
+            <table className="w-full text-sm">
+              <tbody>
+                {results.filter((r) => r.panel === panel).map((r) => (
+                  <tr key={r.id} className="border-t border-line">
+                    {r.skipped ? (
+                      <td colSpan={3} className="py-1.5 text-plum-900">Skipped: {r.skipped.reason}. <span className="text-muted">Not counted as zero; scores are worked out without it.</span></td>
+                    ) : (<>
+                      <td className="py-1.5 text-plum-900">{r.marker}</td>
+                      <td className="tabular-nums text-plum-900">{fmtValue(r)}</td>
+                      <td className="text-right">{r.band === 'not_scored' ? <span className="text-xs text-muted">Not scored</span> : <BandChip band={r.band} />}</td>
+                    </>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
