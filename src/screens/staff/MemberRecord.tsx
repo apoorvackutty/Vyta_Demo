@@ -10,7 +10,7 @@ import { STAFF, STAFF_BY_ROLE, FORMS } from '../../data/seed';
 import { INTAKE } from '../../data/intake';
 import { ageYears, fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { nextSlots, type SlotKind } from '../../lib/slots';
-import { detailsKey, fmtAnswer } from '../../lib/intakeFormat';
+import { detailsKey, extraKeys, fmtAnswer, reactionKey } from '../../lib/intakeFormat';
 import { SourceDialog, fmtValue } from '../../components/results';
 import { PLAN_GROUPS, isLifestyle } from '../../data/protocol';
 import type { IntakeValue, Result, StaffRole } from '../../types';
@@ -388,10 +388,13 @@ function RescheduleDialog({ kind, current, firstName, onClose, onSave }: { kind:
   );
 }
 
-// The member's optional "Add details" note, shown under the answer it belongs to.
-function AnswerDetails({ v }: { v: IntakeValue | undefined }) {
+// The member's optional notes ("Add details", "How did it go?"), shown under the answer they belong to.
+function AnswerNote({ v, label }: { v: IntakeValue | undefined; label: string }) {
   if (typeof v !== 'string' || !v.trim()) return null;
-  return <dd className="mt-1 border-l-2 border-line pl-2 text-plum-900"><span className="text-xs text-muted">Member's details: </span>{v}</dd>;
+  return <dd className="mt-1 border-l-2 border-line pl-2 text-plum-900"><span className="text-xs text-muted">{label}: </span>{v}</dd>;
+}
+function AnswerExtras({ ans, qid }: { ans: Record<string, IntakeValue>; qid: string }) {
+  return <><AnswerNote v={ans[detailsKey(qid)]} label="Member's details" /><AnswerNote v={ans[reactionKey(qid)]} label="How she reacted" /></>;
 }
 
 function IntakeTab({ memberId }: { memberId: string }) {
@@ -411,7 +414,7 @@ function IntakeTab({ memberId }: { memberId: string }) {
           <div className="mt-4 rounded-lg bg-cream-100 p-4">
             <h3 className="mb-2 text-sm font-semibold text-plum-900">Worth knowing first</h3>
             <dl className="grid gap-x-6 gap-y-2 text-sm md:grid-cols-2">
-              {pinned.map((q) => <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className={q.safety && ans[q.id] === 'Yes' ? 'font-semibold text-danger-fg' : 'text-plum-900'}>{fmtAnswer(ans[q.id])}</dd><AnswerDetails v={ans[detailsKey(q.id)]} /></div>)}
+              {pinned.map((q) => <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className={q.safety && ans[q.id] === 'Yes' ? 'font-semibold text-danger-fg' : 'text-plum-900'}>{fmtAnswer(ans[q.id])}</dd><AnswerExtras ans={ans} qid={q.id} /></div>)}
             </dl>
           </div>
         )}
@@ -423,8 +426,8 @@ function IntakeTab({ memberId }: { memberId: string }) {
             <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-plum-900">{sec.title}</h3>{done.includes(sec.id) ? <Chip tone="ok">Finished</Chip> : any ? <Chip tone="info">Started</Chip> : <Chip>Not started</Chip>}</div>
             {any && (
               <dl className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
-                {sec.questions.filter((q) => ans[q.id] !== undefined && fmtAnswer(ans[q.id]) !== '—').map((q) => (
-                  <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className="text-plum-900">{fmtAnswer(ans[q.id])}</dd><AnswerDetails v={ans[detailsKey(q.id)]} /></div>
+                {sec.questions.filter((q) => fmtAnswer(ans[q.id]) !== '—' || extraKeys(q.id).some((k) => fmtAnswer(ans[k]) !== '—')).map((q) => (
+                  <div key={q.id}><dt className="text-xs text-muted">{q.text}</dt><dd className="text-plum-900">{fmtAnswer(ans[q.id])}</dd><AnswerExtras ans={ans} qid={q.id} /></div>
                 ))}
               </dl>
             )}

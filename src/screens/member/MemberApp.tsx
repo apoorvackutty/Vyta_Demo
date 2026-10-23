@@ -10,8 +10,8 @@ import { FORMS, STAFF, BLOOD_DRAW_PREP } from '../../data/seed';
 import { PHASES, PROGRAM_LABEL, PROGRAM_ORDER, ProgramLadder, journeyLabel, phaseIndex, programIndex } from '../../components/domain';
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
-import { GRID_OPTIONS, detailsKey } from '../../lib/intakeFormat';
-import { GRID_SHORT, ORDERED_SINGLE, TEXT_HINTS, hasAnswer, isShown, stopLabel, toggleMulti, FOLLOW_UPS, DETAILS, wantsDetails } from '../../lib/intakeFlow';
+import { GRID_OPTIONS, detailsKey, extraKeys, reactionKey } from '../../lib/intakeFormat';
+import { GRID_SHORT, ORDERED_SINGLE, TEXT_HINTS, hasAnswer, isShown, stopLabel, toggleMulti, FOLLOW_UPS, DETAILS, wantsDetails, reactionHint, wantsReaction } from '../../lib/intakeFlow';
 import { fmtDate, fmtDateTime, fmtTime } from '../../lib/time';
 import { nextSlots, type SlotKind } from '../../lib/slots';
 import type { IntakeQuestion, IntakeValue } from '../../types';
@@ -379,7 +379,7 @@ function IntakeSectionView({ sid }: { sid: string }) {
   const nav = useNavigate();
   const idx = INTAKE.findIndex((x) => x.id === sid);
   const sec = INTAKE[idx];
-  const [ans, setAns] = useState<Record<string, IntakeValue>>(() => Object.fromEntries((sec?.questions ?? []).flatMap((q) => [q.id, detailsKey(q.id)]).map((k) => [k, (s.intake[MEMBER_ID] ?? {})[k]]).filter(([, v]) => v !== undefined)));
+  const [ans, setAns] = useState<Record<string, IntakeValue>>(() => Object.fromEntries((sec?.questions ?? []).flatMap((q) => [q.id, ...extraKeys(q.id)]).map((k) => [k, (s.intake[MEMBER_ID] ?? {})[k]]).filter(([, v]) => v !== undefined)));
   const [check, setCheck] = useState<'none' | 'blanks' | 'safety'>('none');
   if (!sec) return <MemberNotFound back="/intake" />;
   const set = (id: string, v: IntakeValue) => { setAns((a) => ({ ...a, [id]: v })); if (check === 'safety') setCheck('none'); };
@@ -412,7 +412,10 @@ function IntakeSectionView({ sid }: { sid: string }) {
       <div className="space-y-4 p-4">
         {shown.map((q, i) => <QuestionInput key={q.id} q={q} value={ans[q.id]} onChange={(v) => set(q.id, v)}
           pos={`Question ${i + 1} of ${shown.length}`} followUp={!!FOLLOW_UPS[q.id]}
-          details={wantsDetails(q.id, ans) ? { value: ans[detailsKey(q.id)], onChange: (v) => set(detailsKey(q.id), v) } : undefined}
+          extras={[
+            wantsDetails(q.id, ans) && { key: detailsKey(q.id), label: 'Add details', hint: DETAILS[q.id].hint },
+            wantsReaction(q.id, ans) && { key: reactionKey(q.id), label: 'How did it go?', hint: reactionHint(q.id) },
+          ].filter((x): x is Omit<Extra, 'value' | 'onChange'> => !!x).map((x) => ({ ...x, value: ans[x.key], onChange: (v: string) => set(x.key, v) }))}
           flag={check === 'safety' && q.safety && !hasAnswer(ans[q.id]) ? 'Please answer this one' : check === 'blanks' && blank.includes(q) ? 'Not answered yet' : undefined} />)}
       </div>
       <div className="sticky bottom-0 border-t border-line bg-cream-200/95 p-4 backdrop-blur">
@@ -509,8 +512,9 @@ function StepSlider({ id, stops, index, onPick, valueText, ends }: { id: string;
   );
 }
 
-type Details = { value: IntakeValue | undefined; onChange: (v: string) => void };
-function QuestionInput({ q, value, onChange, flag, pos, followUp, details }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void; flag?: string; pos?: string; followUp?: boolean; details?: Details }) {
+// An optional free-text box inside a question's card ("Add details", "How did it go?"). Never counts as blank.
+type Extra = { key: string; label: string; hint: string; value: IntakeValue | undefined; onChange: (v: string) => void };
+function QuestionInput({ q, value, onChange, flag, pos, followUp, extras = [] }: { q: IntakeQuestion; value: IntakeValue | undefined; onChange: (v: IntakeValue) => void; flag?: string; pos?: string; followUp?: boolean; extras?: Extra[] }) {
   const labelId = `q-${q.id}-label`;
   const box = (c: ReactNode, asGroup = true) => {
     const Wrap = asGroup ? 'fieldset' : 'div';
@@ -519,14 +523,14 @@ function QuestionInput({ q, value, onChange, flag, pos, followUp, details }: { q
         {pos && <p className="mb-1 text-[12px] font-medium uppercase tracking-wide text-muted">{pos}{followUp ? ' · follow-up' : ''}</p>}
         {asGroup ? <p id={labelId} className="mb-3 text-[15px] font-medium text-plum-900">{q.text}</p> : <label id={labelId} htmlFor={`q-${q.id}-in`} className="mb-3 block text-[15px] font-medium text-plum-900">{q.text}</label>}
         {c}
-        {details && (
-          <div className="mt-4">
-            <label htmlFor={`q-${q.id}-more`} className="block text-[14px] font-medium text-plum-900">Add details <span className="font-normal text-muted">(optional)</span></label>
-            <p id={`q-${q.id}-more-hint`} className="mb-1.5 text-[13px] text-muted">{DETAILS[q.id].hint}</p>
-            <textarea id={`q-${q.id}-more`} aria-describedby={`q-${q.id}-more-hint`} rows={2} autoCapitalize="sentences" autoComplete="off" className={clsx(inputCls, 'text-[16px]')}
-              value={typeof details.value === 'string' ? details.value : ''} onChange={(e) => details.onChange(e.target.value)} />
+        {extras.map((x) => (
+          <div key={x.key} className="mt-4">
+            <label htmlFor={`q-${x.key}`} className="block text-[14px] font-medium text-plum-900">{x.label} <span className="font-normal text-muted">(optional)</span></label>
+            <p id={`q-${x.key}-hint`} className="mb-1.5 text-[13px] text-muted">{x.hint}</p>
+            <textarea id={`q-${x.key}`} aria-describedby={`q-${x.key}-hint`} rows={2} autoCapitalize="sentences" autoComplete="off" className={clsx(inputCls, 'text-[16px]')}
+              value={typeof x.value === 'string' ? x.value : ''} onChange={(e) => x.onChange(e.target.value)} />
           </div>
-        )}
+        ))}
         {flag && <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-watch-fg"><AlertCircle size={14} aria-hidden />{flag}</p>}
       </Wrap>
     );

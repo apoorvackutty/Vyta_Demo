@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { INTAKE } from '../../data/intake';
 import { TESTELLE_INTAKE } from '../../data/seed';
-import { DETAILS, FOLLOW_UPS, GRID_SHORT, ORDERED_SINGLE, isShown, toggleMulti, wantsDetails } from '../../lib/intakeFlow';
-import { GRID_OPTIONS, detailsKey } from '../../lib/intakeFormat';
+import { DETAILS, FOLLOW_UPS, GRID_SHORT, ORDERED_SINGLE, isShown, toggleMulti, wantsDetails, REACTIONS, reactionHint, wantsReaction } from '../../lib/intakeFlow';
+import { GRID_OPTIONS, detailsKey, reactionKey } from '../../lib/intakeFormat';
 import { buildScenario } from '../scenarios';
 import * as ops from '../ops';
 
@@ -75,5 +75,39 @@ describe('optional answer details', () => {
     expect(d.intake['m-testelle'].Q09_more).toBe('2019, fibroids');
     expect(d.intake['m-testelle'].Q46_more).toBe('Anxiety, 2021');
     expect(a.status).toBe('signed');
+  });
+});
+
+describe('how did it go (medications, hormones, supplements)', () => {
+  it('sits on free-text questions in section 2, under the dose follow-up where one exists', () => {
+    for (const id of REACTIONS) {
+      expect(byId[id].type).toBe('text');
+      expect(INTAKE[1].questions.some((q) => q.id === id)).toBe(true);
+    }
+    // Yes/No parents never get the box: their "Name, dose, duration" follow-up does.
+    for (const parent of ['Q20', 'Q22', 'Q24', 'Q27']) expect(REACTIONS.has(parent)).toBe(false);
+    // ...and doesn't ask for the dose again there.
+    expect(reactionHint('Q21')).not.toMatch(/dose/i);
+    expect(reactionHint('Q26')).toMatch(/dose/i);
+  });
+
+  it('shows once she says yes or lists something, not for none/no', () => {
+    expect(wantsReaction('Q21', { Q20: 'Yes' })).toBe(true);
+    expect(wantsReaction('Q21', { Q20: 'No' })).toBe(false);
+    expect(wantsReaction('Q26', { Q26: 'Vitamin D3' })).toBe(true);
+    expect(wantsReaction('Q26', { Q26: 'None' })).toBe(false);
+    expect(wantsReaction('Q19', { Q19: 'No' })).toBe(false);
+    expect(wantsReaction('Q19', { Q19: 'No', Q19_reaction: 'Stopped HRT in 2024' })).toBe(true);
+  });
+
+  it('is stored beside the answer, survives skip-to-end and does not move progress', () => {
+    const d = buildScenario('intake_stalled');
+    const a = d.assignments.find((x) => x.memberId === 'm-testelle' && x.formId === 'f-intake')!;
+    const before = a.progress;
+    ops.saveIntake(d, 'm-testelle', 's2', { [reactionKey('Q26')]: 'Magnesium helps my sleep' }, false);
+    expect(a.progress).toBe(before);
+    ops.skipIntakeToEnd(d, 'm-testelle', { Q20: 'Yes', Q21: 'Pill, 10 years', Q21_reaction: 'Mood dips, stopped 2023' });
+    expect(d.intake['m-testelle'].Q26_reaction).toBe('Magnesium helps my sleep');
+    expect(d.intake['m-testelle'].Q21_reaction).toBe('Mood dips, stopped 2023');
   });
 });

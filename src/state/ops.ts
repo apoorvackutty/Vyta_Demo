@@ -5,7 +5,7 @@ import type {
 } from '../types';
 import { ONBOARDING_FORM_IDS, FORMS, CLINIC_LOCATION, TESTELLE_INTAKE } from '../data/seed';
 import { INTAKE } from '../data/intake';
-import { detailsKey } from '../lib/intakeFormat';
+import { extraKeys } from '../lib/intakeFormat';
 import { fmtDateTime, fmtDate, toMs } from '../lib/time';
 import { baselineLabs, draftFindings, draftPlan, BASELINE_SCORES, BASELINE_FOCUS, PROTOCOL_NAME, FORM_ROUTE, FIELD_LABEL } from '../data/protocol';
 import { STAFF } from '../data/seed';
@@ -346,7 +346,7 @@ export function skipIntakeToEnd(d: DemoData, memberId: string, current: Record<s
   const chosen = { ...(d.intake[memberId] ?? {}), ...current };
   for (const sec of INTAKE) {
     const answers = Object.fromEntries(
-      sec.questions.flatMap((q) => [[q.id, chosen[q.id] ?? TESTELLE_INTAKE[q.id]], [detailsKey(q.id), chosen[detailsKey(q.id)]]]).filter(([, v]) => v !== undefined),
+      sec.questions.flatMap((q) => [[q.id, chosen[q.id] ?? TESTELLE_INTAKE[q.id]], ...extraKeys(q.id).map((k) => [k, chosen[k]])]).filter(([, v]) => v !== undefined),
     );
     saveIntake(d, memberId, sec.id, answers, true);
   }

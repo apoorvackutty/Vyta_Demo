@@ -1,6 +1,6 @@
 // How the member app presents intake questions. Display only: question IDs, wording and stored answer values stay as in data/intake.ts.
 import type { IntakeQuestion, IntakeValue } from '../types';
-import { detailsKey } from './intakeFormat';
+import { detailsKey, reactionKey } from './intakeFormat';
 
 // Single-choice questions whose options run in order (low to high), shown as a slider.
 export const ORDERED_SINGLE = new Set(['Q03', 'Q04', 'Q29', 'Q30', 'Q34', 'Q37', 'Q41', 'Q45']);
@@ -90,4 +90,18 @@ export function wantsDetails(qid: string, ans: Record<string, IntakeValue>) {
   const v = ans[qid];
   if (d.when) return d.when(v);
   return Array.isArray(v) ? v.some((x) => x !== 'None') : v === 'Yes';
+}
+
+// Optional "How did it go?" box for medications, hormones, birth control, supplements and peptides.
+// Where a source follow-up asks which one and what dose (Q21, Q23, Q25, Q28), the box sits under that follow-up, not its parent.
+const REACTION_HINT = 'Dose, how long, and how you felt on it: side effects, what helped, why you stopped';
+// Under a "List name, dose, duration" follow-up the dose is already asked, so the hint drops it.
+export const reactionHint = (qid: string) => FOLLOW_UPS[qid] ? 'How you felt on it: side effects, what helped, why you stopped' : REACTION_HINT;
+export const REACTIONS = new Set(['Q19', 'Q21', 'Q23', 'Q25', 'Q26', 'Q28']);
+
+export function wantsReaction(qid: string, ans: Record<string, IntakeValue>) {
+  if (!REACTIONS.has(qid)) return false;
+  if (hasAnswer(ans[reactionKey(qid)]) || listed(ans[qid])) return true;
+  const f = FOLLOW_UPS[qid];
+  return !!f && f.when(ans[f.parent]);
 }
